@@ -19,3 +19,4 @@ Thumbs.db
 # Prisma
 *.db
 *.sqlite
+/src/generated/prisma

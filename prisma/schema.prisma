@@ -1,0 +1,172 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  MANAGER
+  STAFF
+}
+
+enum ProductCategory {
+  ALMOXARIFADO
+  ALIMENTOS
+  LIMPEZA
+  ESCRITORIO
+  FERRAMENTAS
+  EQUIPAMENTOS
+  OUTROS
+}
+
+enum MovementType {
+  ENTRADA
+  SAIDA
+  AJUSTE
+  TRANSFERENCIA
+}
+
+enum MovementStatus {
+  PENDENTE
+  CONCLUIDO
+  CANCELADO
+}
+
+// ============== MODELOS PRINCIPAIS ==============
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique(map: "user_email_key")
+  name          String?
+  hexclaveId    String?   @unique(map: "user_hexclaveid_key")
+  password      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  emailVerified DateTime?
+  image         String?
+  role          Role      @default(STAFF)
+  isActive      Boolean   @default(true)
+  lastLogin     DateTime?
+
+  createdProducts Product[]      @relation("CreatedBy")
+  updatedProducts Product[]      @relation("UpdatedBy")
+  movements       Movement[]     @relation("CreatedBy")
+  stockHistory    StockHistory[]
+
+  @@index([email])
+  @@index([role])
+  @@index([isActive])
+}
+
+model Product {
+  id          String          @id @default(cuid())
+  name        String
+  sku         String?         @unique(map: "product_sku_key") // ✅ Nome personalizado
+  description String?
+  category    ProductCategory @default(OUTROS)
+
+  quantity Int  @default(0)
+  minStock Int? @default(5)
+  maxStock Int?
+
+  price     Decimal  @db.Decimal(12, 2)
+  costPrice Decimal? @db.Decimal(12, 2)
+
+  expiryDate  DateTime?
+  batchNumber String?
+
+  location String?
+  supplier String?
+
+  createdById String
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy    User           @relation("CreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy    User?          @relation("UpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  movements    Movement[]
+  stockHistory StockHistory[]
+  stockAlerts  StockAlert[]
+
+  @@index([name])
+  @@index([category])
+  @@index([expiryDate])
+  @@index([createdAt])
+  @@index([createdById])
+  @@index([createdById, name])
+}
+
+model Movement {
+  id        String         @id @default(cuid())
+  productId String
+  type      MovementType
+  quantity  Int
+  reason    String?
+  status    MovementStatus @default(CONCLUIDO)
+
+  unitPrice  Decimal? @db.Decimal(12, 2)
+  totalValue Decimal? @db.Decimal(12, 2)
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  product        Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  createdBy      User           @relation("CreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  stockHistories StockHistory[]
+
+  @@index([productId])
+  @@index([createdById])
+  @@index([type])
+  @@index([createdAt])
+  @@index([status])
+}
+
+model StockHistory {
+  id          String   @id @default(cuid())
+  productId   String
+  oldQuantity Int
+  newQuantity Int
+  movementId  String?
+  changedById String
+  changedAt   DateTime @default(now())
+  reason      String?
+
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+  changedBy User      @relation(fields: [changedById], references: [id], onDelete: Restrict)
+  movement  Movement? @relation(fields: [movementId], references: [id], onDelete: SetNull)
+
+  @@index([productId])
+  @@index([changedById])
+  @@index([changedAt])
+}
+
+model StockAlert {
+  id         String    @id @default(cuid())
+  productId  String
+  alertType  String
+  message    String
+  isResolved Boolean   @default(false)
+  resolvedAt DateTime?
+  resolvedBy String?
+  createdAt  DateTime  @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([isResolved])
+  @@index([alertType])
+}
+
+model CustomCategory {
+  id          String   @id @default(cuid())
+  name        String   @unique(map: "customcategory_name_key")
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
