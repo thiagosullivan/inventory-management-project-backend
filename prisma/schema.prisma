@@ -42,7 +42,6 @@ model User {
   id            String    @id @default(cuid())
   email         String    @unique(map: "user_email_key")
   name          String?
-  hexclaveId    String?   @unique(map: "user_hexclaveid_key")
   password      String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -65,7 +64,7 @@ model User {
 model Product {
   id          String          @id @default(cuid())
   name        String
-  sku         String?         @unique(map: "product_sku_key") // ✅ Nome personalizado
+  sku         String?         @unique(map: "product_sku_key")
   description String?
   category    ProductCategory @default(OUTROS)
 
@@ -73,8 +72,8 @@ model Product {
   minStock Int? @default(5)
   maxStock Int?
 
-  price     Decimal  @db.Decimal(12, 2)
-  costPrice Decimal? @db.Decimal(12, 2)
+  // price     Decimal  @db.Decimal(12, 2)
+  // costPrice Decimal? @db.Decimal(12, 2)
 
   expiryDate  DateTime?
   batchNumber String?
@@ -109,8 +108,8 @@ model Movement {
   reason    String?
   status    MovementStatus @default(CONCLUIDO)
 
-  unitPrice  Decimal? @db.Decimal(12, 2)
-  totalValue Decimal? @db.Decimal(12, 2)
+  // unitPrice  Decimal? @db.Decimal(12, 2)
+  // totalValue Decimal? @db.Decimal(12, 2)
 
   createdById String
   createdAt   DateTime @default(now())
