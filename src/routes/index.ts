@@ -1,6 +1,10 @@
 import express from "express";
+import authRouter from "./auth/auth";
 
 const router = express.Router();
+
+// Authentication routes
+router.use("/auth", authRouter);
 
 // Health check
 router.get("/health", async (req, res) => {

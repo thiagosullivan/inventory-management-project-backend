@@ -5,11 +5,9 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import "dotenv/config";
 import { PrismaClient } from "../generated/prisma/client";
 
-// 🔥 IMPORTANTE: O adapter é OBRIGATÓRIO no Prisma 7+
 const connectionString = `${process.env.DATABASE_URL}`;
 const adapter = new PrismaPg({ connectionString });
 
-// Criar o PrismaClient com o adapter
 const prisma = new PrismaClient({
   adapter,
   log:
@@ -20,26 +18,48 @@ const prisma = new PrismaClient({
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
-    provider: "postgresql", // NeonDB é PostgreSQL
+    provider: "postgresql",
   }),
-  // Configurações adicionais
+
+  // ✅ Configuração CORS
+  cors: {
+    origin:
+      process.env.NODE_ENV === "production"
+        ? ["https://seu-frontend.com"]
+        : [
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://localhost:3001",
+          ],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "Origin", "Accept"],
+  },
+
+  // ✅ Trusted Origins
+  trustedOrigins: [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+  ],
+
+  // ✅ CSRF desabilitado em desenvolvimento
+  csrf: {
+    enabled: process.env.NODE_ENV === "production",
+  },
+
   emailAndPassword: {
     enabled: true,
-    autoSignIn: true, // Login automático após registro
+    autoSignIn: true,
   },
-  // Social providers (opcional)
-  socialProviders: {
-    // google: {
-    //   clientId: process.env.GOOGLE_CLIENT_ID!,
-    //   clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    // },
-  },
-  // Configuração de sessão
+
   session: {
-    expiresIn: 60 * 60 * 24 * 7, // 7 dias
-    updateAge: 60 * 60 * 24, // 1 dia
+    expiresIn: 60 * 60 * 24 * 7,
+    updateAge: 60 * 60 * 24,
   },
-  // Configuração de conta
+
   account: {
     accountLinking: {
       enabled: true,
