@@ -1,4 +1,3 @@
-// src/middlewares/auth.ts
 import { Request, Response, NextFunction } from "express";
 import { auth } from "../lib/auth.js";
 import { AuthenticatedUser } from "../types/user.types.js";

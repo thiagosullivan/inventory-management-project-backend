@@ -1,4 +1,3 @@
-// src/lib/auth.ts
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -21,7 +20,6 @@ export const auth = betterAuth({
     provider: "postgresql",
   }),
 
-  // ✅ Configuração CORS
   cors: {
     origin:
       process.env.NODE_ENV === "production"
@@ -36,7 +34,6 @@ export const auth = betterAuth({
     allowedHeaders: ["Content-Type", "Authorization", "Origin", "Accept"],
   },
 
-  // ✅ Trusted Origins
   trustedOrigins: [
     "http://localhost:3000",
     "http://localhost:5173",
@@ -45,7 +42,6 @@ export const auth = betterAuth({
     "http://127.0.0.1:5173",
   ],
 
-  // ✅ CSRF desabilitado em desenvolvimento
   csrf: {
     enabled: process.env.NODE_ENV === "production",
   },
