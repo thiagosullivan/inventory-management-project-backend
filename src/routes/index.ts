@@ -1,10 +1,14 @@
 import express from "express";
 import authRouter from "./auth/auth";
+import adminRouter from "./admin/adminRoutes";
 
 const router = express.Router();
 
 // Authentication routes
 router.use("/auth", authRouter);
+
+// Admin routes
+router.use("/admin", adminRouter);
 
 // Health check
 router.get("/health", async (req, res) => {
