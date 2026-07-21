@@ -245,4 +245,36 @@ adminRouter.patch("/users/:id/role", async (req, res) => {
   }
 });
 
+// Delete user (only Manager)
+adminRouter.delete("/users/:id", async (req, res) => {
+  try {
+    const adminId = req.user?.id!;
+    const userId = req.params.id;
+
+    const user = await userService.deleteUser(userId, adminId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Usuário deletado com sucesso!",
+      data: user,
+    });
+  } catch (error: any) {
+    console.error("❌ Erro ao deletar usuário:", error);
+
+    if (error.message.includes("Usuário não encontrado")) {
+      return res.status(404).json({
+        success: false,
+        message: error.message,
+        code: "USER_NOT_FOUND",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Erro ao deletar usuário",
+      code: "INTERNAL_ERROR",
+    });
+  }
+});
+
 export default adminRouter;

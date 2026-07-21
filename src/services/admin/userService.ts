@@ -253,4 +253,42 @@ export const userService = {
 
     return updated;
   },
+
+  // Delete user (only manager)
+  async deleteUser(userId: string, adminId: string): Promise<UserResponse> {
+    const admin = await prisma.user.findUnique({
+      where: { id: adminId },
+      select: { role: true },
+    });
+
+    if (!admin || !isManager(admin.role)) {
+      throw new Error("Apenas gerentes podem deletar usuários");
+    }
+
+    const userExists = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+
+    if (!userExists) {
+      throw new Error("Usuário não encontrado");
+    }
+
+    const deletedUser = await prisma.user.delete({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        isActive: true,
+        createdAt: true,
+        lastLogin: true,
+        image: true,
+        emailVerified: true,
+      },
+    });
+
+    return deletedUser;
+  },
 };
