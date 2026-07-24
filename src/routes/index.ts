@@ -1,6 +1,7 @@
 import express from "express";
 import authRouter from "./auth/auth";
 import adminRouter from "./admin/adminRoutes";
+import categoryRouter from "./admin/categoryRoutes.js";
 
 const router = express.Router();
 
@@ -9,6 +10,9 @@ router.use("/auth", authRouter);
 
 // Admin routes
 router.use("/admin", adminRouter);
+
+// Staff/Admin Routes
+router.use("/admin", categoryRouter);
 
 // Health check
 router.get("/health", async (req, res) => {
