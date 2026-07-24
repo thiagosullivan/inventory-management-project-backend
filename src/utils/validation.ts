@@ -2,6 +2,8 @@
 
 import { Role } from "../generated/prisma/enums";
 
+// USERS VALIDATIONS
+
 // Validar se o usuário é MANAGER
 export function isManager(role: Role): boolean {
   return role === Role.MANAGER;
@@ -52,4 +54,67 @@ export function validateUserData(data: {
     isValid: errors.length === 0,
     errors,
   };
+}
+
+// CATEGORIES VALIDATIONS
+
+// Validar dados da categoria
+export function validateCategoryData(data: {
+  name: string;
+  description?: string;
+}) {
+  const errors: string[] = [];
+
+  if (!data.name || data.name.trim().length < 2) {
+    errors.push("Nome da categoria deve ter pelo menos 2 caracteres");
+  }
+
+  if (data.name && data.name.length > 50) {
+    errors.push("Nome da categoria deve ter no máximo 50 caracteres");
+  }
+
+  if (data.description && data.description.length > 200) {
+    errors.push("Descrição deve ter no máximo 200 caracteres");
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+  };
+}
+
+// Validar se a categoria existe
+export async function categoryExists(
+  prisma: any,
+  id: string,
+): Promise<boolean> {
+  const category = await prisma.customCategory.findUnique({
+    where: { id },
+    select: { id: true },
+  });
+  return !!category;
+}
+
+// Validar se o nome da categoria já existe
+export async function categoryNameExists(
+  prisma: any,
+  name: string,
+  excludeId?: string,
+): Promise<boolean> {
+  const where: any = {
+    name: {
+      equals: name,
+      mode: "insensitive",
+    },
+  };
+
+  if (excludeId) {
+    where.id = { not: excludeId };
+  }
+
+  const category = await prisma.customCategory.findFirst({
+    where,
+    select: { id: true },
+  });
+  return !!category;
 }
