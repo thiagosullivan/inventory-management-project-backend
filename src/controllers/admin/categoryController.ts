@@ -8,7 +8,7 @@ import {
 
 export const categoryController = {
   /**
-   * Criar nova categoria (apenas MANAGER)
+   * Create category (only MANAGER)
    * POST /api/admin/categories
    */
   async createCategory(req: Request, res: Response) {
@@ -69,7 +69,7 @@ export const categoryController = {
   },
 
   /**
-   * Listar todas as categorias (STAFF e MANAGER)
+   * List all categories (STAFF and MANAGER)
    * GET /api/admin/categories
    */
   async listCategories(req: Request, res: Response) {
@@ -97,7 +97,7 @@ export const categoryController = {
   },
 
   /**
-   * Buscar categoria por ID (STAFF e MANAGER)
+   * Get category by ID (STAFF and MANAGER)
    * GET /api/admin/categories/:id
    */
   async getCategoryById(req: Request, res: Response) {
@@ -138,7 +138,7 @@ export const categoryController = {
   },
 
   /**
-   * Atualizar categoria (apenas MANAGER)
+   * Update category (only MANAGER)
    * PATCH /api/admin/categories/:id
    */
   async updateCategory(req: Request, res: Response) {
@@ -222,7 +222,7 @@ export const categoryController = {
   },
 
   /**
-   * Deletar categoria (apenas MANAGER)
+   * Delete category (only MANAGER)
    * DELETE /api/admin/categories/:id
    */
   async deleteCategory(req: Request, res: Response) {
@@ -275,7 +275,7 @@ export const categoryController = {
   },
 
   /**
-   * Listar categorias para dropdown (STAFF e MANAGER)
+   * List category for dropdown (STAFF and MANAGER)
    * GET /api/admin/categories/options
    */
   async getCategoryOptions(req: Request, res: Response) {
