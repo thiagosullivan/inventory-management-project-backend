@@ -1,38 +1,52 @@
-// src/routes/auth/adminRoutes.ts
 import express from "express";
-import { auth } from "../../lib/auth.js";
 import { authenticate, isManager } from "../../middlewares/auth.js";
 import { Role } from "../../generated/prisma/enums.js";
 import { userService } from "../../services/admin/userService.js";
-import { ensureAdminId } from "../../middlewares/admin.js";
 
 const adminRouter = express.Router();
 
-// Middlewares
+// 🔒 Apenas MANAGER pode acessar rotas de usuários
 adminRouter.use(authenticate);
 adminRouter.use(isManager);
-// adminRouter.use(ensureAdminId);
 
-/**
- * POST /api/auth/admin/users
- * Create new user (only MANAGER)
- *
- * Body:
- * {
- *   "email": "novo@usuario.com",
- *   "password": "senha123",
- *   "name": "Novo Usuário",
- *   "role": "STAFF" | "MANAGER" (opcional, default: STAFF),
- *   "image": "url-da-foto" (opcional)
- * }
- */
-adminRouter.post("/users", async (req, res) => {
+// GET /admin/users - List users
+adminRouter.get("/", async (req, res) => {
   try {
     const adminId = req.user?.id!;
+    const filters = {
+      search: req.query.search as string,
+      role: req.query.role as Role,
+      isActive:
+        req.query.isActive === "true"
+          ? true
+          : req.query.isActive === "false"
+            ? false
+            : undefined,
+      page: req.query.page ? Number(req.query.page) : undefined,
+      limit: req.query.limit ? Number(req.query.limit) : undefined,
+    };
 
+    const result = await userService.listUsers(adminId, filters);
+    return res.status(200).json({
+      success: true,
+      data: result,
+    });
+  } catch (error: any) {
+    console.error("❌ Erro ao listar usuários:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Erro ao listar usuários",
+      code: "INTERNAL_ERROR",
+    });
+  }
+});
+
+// POST /admin/users - Create user
+adminRouter.post("/", async (req, res) => {
+  try {
+    const adminId = req.user?.id!;
     const { email, password, name, role, image } = req.body;
 
-    // required data
     if (!email || !password || !name) {
       return res.status(400).json({
         success: false,
@@ -41,7 +55,6 @@ adminRouter.post("/users", async (req, res) => {
       });
     }
 
-    // create user
     const userResponse = await userService.createStaffUser(
       {
         email,
@@ -58,18 +71,7 @@ adminRouter.post("/users", async (req, res) => {
     return res.status(201).json({
       success: true,
       message: "Usuário criado com sucesso!",
-      data: {
-        user: {
-          id: userResponse.user.id,
-          email: userResponse.user.email,
-          name: userResponse.user.name,
-          role: role || Role.STAFF,
-          image: userResponse.user.image,
-          createdAt: userResponse.user.createdAt,
-          updatedAt: userResponse.user.updatedAt,
-        },
-        token: userResponse.token,
-      },
+      data: userResponse,
     });
   } catch (error: any) {
     console.error("❌ Erro ao criar usuário:", error);
@@ -82,14 +84,6 @@ adminRouter.post("/users", async (req, res) => {
       });
     }
 
-    if (error.message.includes("Dados inválidos")) {
-      return res.status(400).json({
-        success: false,
-        message: error.message,
-        code: "INVALID_DATA",
-      });
-    }
-
     return res.status(500).json({
       success: false,
       message: "Erro interno ao criar usuário",
@@ -99,43 +93,8 @@ adminRouter.post("/users", async (req, res) => {
   }
 });
 
-// List all users (only Manager)
-
-adminRouter.get("/users", async (req, res) => {
-  try {
-    const adminId = req.user?.id!;
-
-    const filters = {
-      search: req.query.search as string,
-      role: req.query.role as Role,
-      isActive:
-        req.query.isActive === "true"
-          ? true
-          : req.query.isActive === "false"
-            ? false
-            : undefined,
-      page: req.query.page ? Number(req.query.page) : undefined,
-      limit: req.query.limit ? Number(req.query.limit) : undefined,
-    };
-
-    const result = await userService.listUsers(adminId, filters);
-
-    return res.status(200).json({
-      success: true,
-      data: result,
-    });
-  } catch (error: any) {
-    console.error("❌ Erro ao listar usuários:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Erro ao listar usuários",
-      code: "INTERNAL_ERROR",
-    });
-  }
-});
-
-// Get user by id
-adminRouter.get("/users/:id", async (req, res) => {
+// GET /admin/users/:id - Get user by ID
+adminRouter.get("/:id", async (req, res) => {
   try {
     const adminId = req.user?.id!;
     const userId = req.params.id;
@@ -164,8 +123,8 @@ adminRouter.get("/users/:id", async (req, res) => {
   }
 });
 
-// toggle active
-adminRouter.patch("/users/:id/status", async (req, res) => {
+// PATCH /admin/users/:id/status - Active/Deactive
+adminRouter.patch("/:id/status", async (req, res) => {
   try {
     const adminId = req.user?.id!;
     const userId = req.params.id;
@@ -196,8 +155,8 @@ adminRouter.patch("/users/:id/status", async (req, res) => {
   }
 });
 
-// Update role (only Manager)
-adminRouter.patch("/users/:id/role", async (req, res) => {
+// PATCH /admin/users/:id/role - Update role
+adminRouter.patch("/:id/role", async (req, res) => {
   try {
     const adminId = req.user?.id!;
     const userId = req.params.id;
@@ -245,18 +204,37 @@ adminRouter.patch("/users/:id/role", async (req, res) => {
   }
 });
 
-// Delete user (only Manager)
-adminRouter.delete("/users/:id", async (req, res) => {
+// DELETE /admin/users/:id - Delete user
+adminRouter.delete("/:id", async (req, res) => {
   try {
     const adminId = req.user?.id!;
     const userId = req.params.id;
 
-    const user = await userService.deleteUser(userId, adminId);
+    // Verificar se o usuário existe
+    const user = await userService.getUserById(userId, adminId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Usuário não encontrado",
+        code: "USER_NOT_FOUND",
+      });
+    }
+
+    // Não permitir deletar a si mesmo
+    if (userId === adminId) {
+      return res.status(400).json({
+        success: false,
+        message: "Não é possível deletar seu próprio usuário",
+        code: "CANNOT_DELETE_SELF",
+      });
+    }
+
+    await userService.deleteUser(userId, adminId);
 
     return res.status(200).json({
       success: true,
       message: "Usuário deletado com sucesso!",
-      data: user,
     });
   } catch (error: any) {
     console.error("❌ Erro ao deletar usuário:", error);
