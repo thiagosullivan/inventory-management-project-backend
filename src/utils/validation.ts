@@ -118,3 +118,97 @@ export async function categoryNameExists(
   });
   return !!category;
 }
+
+// Validar dados do produto
+export function validateProductData(data: {
+  name: string;
+  sku?: string;
+  category?: string;
+  quantity?: number;
+  minStock?: number;
+  maxStock?: number;
+  price?: number;
+  costPrice?: number;
+}) {
+  const errors: string[] = [];
+
+  if (!data.name || data.name.trim().length < 2) {
+    errors.push("Nome do produto deve ter pelo menos 2 caracteres");
+  }
+
+  if (data.name && data.name.length > 100) {
+    errors.push("Nome do produto deve ter no máximo 100 caracteres");
+  }
+
+  if (data.sku && data.sku.length > 50) {
+    errors.push("SKU deve ter no máximo 50 caracteres");
+  }
+
+  if (data.quantity !== undefined && data.quantity < 0) {
+    errors.push("Quantidade não pode ser negativa");
+  }
+
+  if (data.minStock !== undefined && data.minStock < 0) {
+    errors.push("Estoque mínimo não pode ser negativo");
+  }
+
+  if (data.maxStock !== undefined && data.maxStock < 0) {
+    errors.push("Estoque máximo não pode ser negativo");
+  }
+
+  if (
+    data.minStock !== undefined &&
+    data.maxStock !== undefined &&
+    data.minStock > data.maxStock
+  ) {
+    errors.push("Estoque mínimo não pode ser maior que o máximo");
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+  };
+}
+
+// Validar dados de movimentação
+export function validateMovementData(data: {
+  productId: string;
+  type: string;
+  quantity: number;
+}) {
+  const errors: string[] = [];
+
+  if (!data.productId) {
+    errors.push("ID do produto é obrigatório");
+  }
+
+  if (!data.type) {
+    errors.push("Tipo de movimentação é obrigatório");
+  }
+
+  if (data.quantity === undefined || data.quantity <= 0) {
+    errors.push("Quantidade deve ser maior que zero");
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+  };
+}
+
+// Verificar se SKU já existe
+export async function skuExists(
+  prisma: any,
+  sku: string,
+  excludeId?: string,
+): Promise<boolean> {
+  const where: any = { sku };
+  if (excludeId) {
+    where.id = { not: excludeId };
+  }
+  const product = await prisma.product.findFirst({
+    where,
+    select: { id: true },
+  });
+  return !!product;
+}
