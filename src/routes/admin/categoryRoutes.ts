@@ -7,7 +7,7 @@ const router = express.Router();
 // middleware
 router.use(authenticate);
 
-// 📌 Rotas para STAFF e MANAGER (only read)
+// 📌 Routes for STAFF and MANAGER (only read)
 router.get("/categories", isStaff, categoryController.listCategories);
 router.get(
   "/categories/options",
@@ -16,7 +16,7 @@ router.get(
 );
 router.get("/categories/:id", isStaff, categoryController.getCategoryById);
 
-// 📌 Rotas apenas para MANAGER (write)
+// 📌 Routes for MANAGER (write)
 router.post("/categories", isManager, categoryController.createCategory);
 router.patch("/categories/:id", isManager, categoryController.updateCategory);
 router.delete("/categories/:id", isManager, categoryController.deleteCategory);
