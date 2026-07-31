@@ -4,10 +4,10 @@ import { authenticate, isManager, isStaff } from "../../middlewares/auth.js";
 
 const router = express.Router();
 
-// 🔒 Todas as rotas de produtos requerem autenticação
+// Middleware
 router.use(authenticate);
 
-// 📌 Rotas para STAFF e MANAGER (leitura e operações básicas)
+// STAFF and MANAGER (read and basics operations)
 router.post("/products", isStaff, productController.createProduct);
 router.get("/products", isStaff, productController.listProducts);
 router.get("/products/:id", isStaff, productController.getProductById);
@@ -24,7 +24,7 @@ router.get(
 );
 router.get("/stock/summary", isStaff, productController.getStockSummary);
 
-// 📌 Rotas para STAFF e MANAGER (movimentações e alertas)
+// STAFF and MANAGER (movements and alerts)
 router.post(
   "/products/:id/movements",
   isStaff,
@@ -32,8 +32,8 @@ router.post(
 );
 router.patch("/alerts/:id/resolve", isStaff, productController.resolveAlert);
 
-// 📌 Rotas apenas para MANAGER (escrita/deleção)
-router.patch("/products/:id", isManager, productController.updateProduct);
-router.delete("/products/:id", isManager, productController.deleteProduct);
+// (update and delete)
+router.patch("/products/:id", isStaff, productController.updateProduct);
+router.delete("/products/:id", isStaff, productController.deleteProduct);
 
 export default router;
