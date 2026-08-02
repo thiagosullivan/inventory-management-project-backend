@@ -32,6 +32,7 @@ export interface UpdateProductData {
   batchNumber?: string;
   location?: string;
   supplier?: string;
+  reason?: string;
 }
 
 // Resposta da API para produto
@@ -61,7 +62,7 @@ export interface ProductResponse {
     id: string;
     name: string | null;
     email: string;
-  };
+  } | null;
 }
 
 // Lista de produtos com paginação
