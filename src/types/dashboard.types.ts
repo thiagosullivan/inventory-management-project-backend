@@ -2,7 +2,6 @@ export interface DashboardOverviewResponse {
   summary: {
     totalProducts: number;
     totalUnits: number;
-    totalStockValue: number;
     totalMovements: number;
     movementsPeriod: string;
   };
@@ -15,18 +14,17 @@ export interface DashboardOverviewResponse {
   };
   ratios: {
     stockOccupancyRate: number;
-    averageTicket: number;
     activeProducts: number;
     activeProductsPercentage: number;
   };
   topItems: {
-    highestValueProducts: {
+    lowestQuantityProducts: {
       id: string;
       name: string;
       sku: string | null;
-      value: number;
+      quantity: number;
     }[];
-    lowestQuantityProducts: {
+    highestQuantityProducts: {
       id: string;
       name: string;
       sku: string | null;
