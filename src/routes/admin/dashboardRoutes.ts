@@ -9,5 +9,6 @@ router.use(authenticate);
 
 // 📌 Rotas para STAFF e MANAGER
 router.get("/dashboard/overview", isStaff, dashboardController.getOverview);
+router.get("/dashboard/stock", isStaff, dashboardController.getStockMetrics);
 
 export default router;

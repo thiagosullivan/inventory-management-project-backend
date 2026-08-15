@@ -50,4 +50,47 @@ export const dashboardController = {
       });
     }
   },
+
+  /**
+   * GET /dashboard/stock
+   * Get stock and products metrics
+   */
+  async getStockMetrics(req: Request, res: Response) {
+    try {
+      const limit = req.query.limit ? Number(req.query.limit) : 10;
+      const category = req.query.category as string;
+      const location = req.query.location as string;
+      const supplier = req.query.supplier as string;
+
+      // Validar parâmetros
+      if (limit && (isNaN(limit) || limit < 1)) {
+        return res.status(400).json({
+          success: false,
+          message: "limit deve ser um número positivo",
+          code: "INVALID_LIMIT",
+        });
+      }
+
+      const result = await dashboardService.getStockMetrics({
+        limit,
+        category,
+        location,
+        supplier,
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error: any) {
+      console.error("❌ Erro ao buscar métricas de estoque:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Erro ao buscar métricas de estoque",
+        code: "INTERNAL_ERROR",
+        error:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
+      });
+    }
+  },
 };
