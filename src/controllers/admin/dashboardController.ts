@@ -93,4 +93,59 @@ export const dashboardController = {
       });
     }
   },
+
+  /**
+   * GET /dashboard/activity
+   * Get activity metrics (movements and users)
+   */
+  async getActivityMetrics(req: Request, res: Response) {
+    try {
+      const periodDays = req.query.periodDays
+        ? Number(req.query.periodDays)
+        : 30;
+      const limit = req.query.limit ? Number(req.query.limit) : 10;
+      const userId = req.query.userId as string;
+      const productId = req.query.productId as string;
+      const type = req.query.type as string;
+
+      // Validar parâmetros
+      if (periodDays && (isNaN(periodDays) || periodDays < 1)) {
+        return res.status(400).json({
+          success: false,
+          message: "periodDays deve ser um número positivo",
+          code: "INVALID_PERIOD",
+        });
+      }
+
+      if (limit && (isNaN(limit) || limit < 1)) {
+        return res.status(400).json({
+          success: false,
+          message: "limit deve ser um número positivo",
+          code: "INVALID_LIMIT",
+        });
+      }
+
+      const result = await dashboardService.getActivityMetrics({
+        periodDays,
+        limit,
+        userId,
+        productId,
+        type,
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error: any) {
+      console.error("❌ Erro ao buscar métricas de atividade:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Erro ao buscar métricas de atividade",
+        code: "INTERNAL_ERROR",
+        error:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
+      });
+    }
+  },
 };

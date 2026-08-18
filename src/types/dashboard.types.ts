@@ -127,7 +127,6 @@ export interface StockMetricsFilters {
 }
 
 // /dashboard/activity
-
 export interface ActivityMetricsResponse {
   summary: {
     totalMovements: number;
