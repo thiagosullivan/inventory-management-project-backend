@@ -50,6 +50,7 @@ export interface DashboardOverviewFilters {
 }
 
 // /dashboard/stock
+
 export interface StockMetricsResponse {
   summary: {
     totalProducts: number;
@@ -123,4 +124,115 @@ export interface StockMetricsFilters {
   category?: string; // Filtrar por categoria
   location?: string; // Filtrar por localização
   supplier?: string; // Filtrar por fornecedor
+}
+
+// /dashboard/activity
+
+export interface ActivityMetricsResponse {
+  summary: {
+    totalMovements: number;
+    totalEntries: number;
+    totalExits: number;
+    totalAdjustments: number;
+    entriesExitsRatio: number;
+    averageMovementsPerDay: number;
+    periodDays: number;
+  };
+  byPeriod: {
+    daily: {
+      date: string;
+      entries: number;
+      exits: number;
+      adjustments: number;
+      total: number;
+    }[];
+    weekly: {
+      week: string;
+      entries: number;
+      exits: number;
+      adjustments: number;
+      total: number;
+    }[];
+    monthly: {
+      month: string;
+      entries: number;
+      exits: number;
+      adjustments: number;
+      total: number;
+    }[];
+  };
+  byUser: {
+    topUsers: {
+      userId: string;
+      name: string | null;
+      email: string;
+      role: string;
+      totalMovements: number;
+      entries: number;
+      exits: number;
+      adjustments: number;
+      lastActivity: Date | null;
+    }[];
+    summary: {
+      activeUsers: number;
+      totalUsers: number;
+      averageMovementsPerUser: number;
+      mostActiveUser: string | null;
+      mostActiveUserCount: number;
+    };
+  };
+  byProduct: {
+    mostMovedProducts: {
+      productId: string;
+      name: string;
+      sku: string | null;
+      totalMovements: number;
+      entries: number;
+      exits: number;
+      currentQuantity: number;
+    }[];
+    leastMovedProducts: {
+      productId: string;
+      name: string;
+      sku: string | null;
+      totalMovements: number;
+      currentQuantity: number;
+      daysWithoutMovement: number;
+    }[];
+  };
+  byReason: {
+    reason: string;
+    count: number;
+    percentage: number;
+  }[];
+  trends: {
+    hourlyDistribution: {
+      hour: number;
+      entries: number;
+      exits: number;
+      total: number;
+    }[];
+    weekdayDistribution: {
+      day: string;
+      dayOfWeek: number;
+      entries: number;
+      exits: number;
+      total: number;
+    }[];
+    monthlySeasonality: {
+      month: string;
+      monthNumber: number;
+      entries: number;
+      exits: number;
+      total: number;
+    }[];
+  };
+}
+
+export interface ActivityMetricsFilters {
+  periodDays?: number; // Padrão: 30
+  limit?: number; // Para listagens (padrão: 10)
+  userId?: string; // Filtrar por usuário específico
+  productId?: string; // Filtrar por produto específico
+  type?: string; // Filtrar por tipo (ENTRADA, SAIDA, AJUSTE)
 }
