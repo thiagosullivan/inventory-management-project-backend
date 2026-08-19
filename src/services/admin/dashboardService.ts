@@ -5,6 +5,8 @@ import {
   DashboardOverviewFilters,
   StockMetricsFilters,
   StockMetricsResponse,
+  ActivityMetricsFilters,
+  ActivityMetricsResponse,
 } from "../../types/dashboard.types.js";
 import { MovementType } from "../../generated/prisma/enums.js";
 
@@ -530,4 +532,623 @@ export const dashboardService = {
       },
     };
   },
+
+  /**
+   * Get activity metrics (movements and users)
+   * GET /dashboard/activity
+   */
+  async getActivityMetrics(
+    filters?: ActivityMetricsFilters,
+  ): Promise<ActivityMetricsResponse> {
+    const periodDays = filters?.periodDays || 30;
+    const limit = filters?.limit || 10;
+
+    const now = new Date();
+    const periodStart = new Date();
+    periodStart.setDate(periodStart.getDate() - periodDays);
+
+    // ============================================================
+    // CONSTRUIR FILTROS
+    // ============================================================
+
+    const movementWhere: any = {
+      createdAt: {
+        gte: periodStart,
+        lte: now,
+      },
+    };
+
+    if (filters?.userId) {
+      movementWhere.createdById = filters.userId;
+    }
+
+    if (filters?.productId) {
+      movementWhere.productId = filters.productId;
+    }
+
+    if (filters?.type) {
+      movementWhere.type = filters.type;
+    }
+
+    // ============================================================
+    // 1. BUSCAR MOVIMENTAÇÕES DO PERÍODO
+    // ============================================================
+
+    const movements = await prisma.movement.findMany({
+      where: movementWhere,
+      select: {
+        id: true,
+        productId: true,
+        type: true,
+        quantity: true,
+        reason: true,
+        createdAt: true,
+        createdById: true,
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+        product: {
+          select: {
+            id: true,
+            name: true,
+            sku: true,
+            quantity: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    // Buscar todos os usuários para estatísticas
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        lastLogin: true,
+      },
+    });
+
+    // Buscar todos os produtos para estatísticas de produtos parados
+    const products = await prisma.product.findMany({
+      select: {
+        id: true,
+        name: true,
+        sku: true,
+        quantity: true,
+        updatedAt: true,
+      },
+    });
+
+    // ============================================================
+    // 2. RESUMO (SUMMARY)
+    // ============================================================
+
+    const totalMovements = movements.length;
+    const totalEntries = movements
+      .filter((m) => m.type === "ENTRADA")
+      .reduce((sum, m) => sum + Math.abs(m.quantity), 0);
+    const totalExits = movements
+      .filter((m) => m.type === "SAIDA")
+      .reduce((sum, m) => sum + Math.abs(m.quantity), 0);
+    const totalAdjustments = movements
+      .filter((m) => m.type === "AJUSTE")
+      .reduce((sum, m) => sum + Math.abs(m.quantity), 0);
+
+    const entriesExitsRatio =
+      totalExits > 0
+        ? parseFloat((totalEntries / totalExits).toFixed(2))
+        : totalEntries > 0
+          ? totalEntries
+          : 0;
+
+    const averageMovementsPerDay =
+      periodDays > 0 ? parseFloat((totalMovements / periodDays).toFixed(2)) : 0;
+
+    // ============================================================
+    // 3. POR PERÍODO (BY PERIOD)
+    // ============================================================
+
+    // 3.1 Diário
+    const dailyMap = new Map<
+      string,
+      { entries: number; exits: number; adjustments: number }
+    >();
+
+    for (let i = 0; i < periodDays; i++) {
+      const date = new Date(periodStart);
+      date.setDate(date.getDate() + i);
+      const dateKey = date.toISOString().split("T")[0];
+      dailyMap.set(dateKey, { entries: 0, exits: 0, adjustments: 0 });
+    }
+
+    movements.forEach((m) => {
+      const dateKey = m.createdAt.toISOString().split("T")[0];
+      const existing = dailyMap.get(dateKey);
+      if (existing) {
+        const quantity = Math.abs(m.quantity);
+        if (m.type === "ENTRADA") {
+          existing.entries += quantity;
+        } else if (m.type === "SAIDA") {
+          existing.exits += quantity;
+        } else if (m.type === "AJUSTE") {
+          existing.adjustments += quantity;
+        }
+      }
+    });
+
+    const daily = Array.from(dailyMap.entries())
+      .map(([date, data]) => ({
+        date,
+        entries: data.entries,
+        exits: data.exits,
+        adjustments: data.adjustments,
+        total: data.entries + data.exits + data.adjustments,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // 3.2 Semanal
+    const weeklyMap = new Map<
+      string,
+      { entries: number; exits: number; adjustments: number }
+    >();
+
+    movements.forEach((m) => {
+      const date = new Date(m.createdAt);
+      const weekNumber = getWeekNumber(date);
+      const year = date.getFullYear();
+      const weekKey = `${year}-W${String(weekNumber).padStart(2, "0")}`;
+
+      const existing = weeklyMap.get(weekKey);
+      if (existing) {
+        const quantity = Math.abs(m.quantity);
+        if (m.type === "ENTRADA") {
+          existing.entries += quantity;
+        } else if (m.type === "SAIDA") {
+          existing.exits += quantity;
+        } else if (m.type === "AJUSTE") {
+          existing.adjustments += quantity;
+        }
+      } else {
+        const quantity = Math.abs(m.quantity);
+        weeklyMap.set(weekKey, {
+          entries: m.type === "ENTRADA" ? quantity : 0,
+          exits: m.type === "SAIDA" ? quantity : 0,
+          adjustments: m.type === "AJUSTE" ? quantity : 0,
+        });
+      }
+    });
+
+    const weekly = Array.from(weeklyMap.entries())
+      .map(([week, data]) => ({
+        week,
+        entries: data.entries,
+        exits: data.exits,
+        adjustments: data.adjustments,
+        total: data.entries + data.exits + data.adjustments,
+      }))
+      .sort((a, b) => a.week.localeCompare(b.week));
+
+    // 3.3 Mensal
+    const monthlyMap = new Map<
+      string,
+      { entries: number; exits: number; adjustments: number }
+    >();
+
+    movements.forEach((m) => {
+      const date = new Date(m.createdAt);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+
+      const existing = monthlyMap.get(monthKey);
+      if (existing) {
+        const quantity = Math.abs(m.quantity);
+        if (m.type === "ENTRADA") {
+          existing.entries += quantity;
+        } else if (m.type === "SAIDA") {
+          existing.exits += quantity;
+        } else if (m.type === "AJUSTE") {
+          existing.adjustments += quantity;
+        }
+      } else {
+        const quantity = Math.abs(m.quantity);
+        monthlyMap.set(monthKey, {
+          entries: m.type === "ENTRADA" ? quantity : 0,
+          exits: m.type === "SAIDA" ? quantity : 0,
+          adjustments: m.type === "AJUSTE" ? quantity : 0,
+        });
+      }
+    });
+
+    const monthly = Array.from(monthlyMap.entries())
+      .map(([month, data]) => ({
+        month,
+        entries: data.entries,
+        exits: data.exits,
+        adjustments: data.adjustments,
+        total: data.entries + data.exits + data.adjustments,
+      }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    // ============================================================
+    // 4. POR USUÁRIO (BY USER)
+    // ============================================================
+
+    const userMovementMap = new Map<
+      string,
+      {
+        userId: string;
+        name: string | null;
+        email: string;
+        role: string;
+        totalMovements: number;
+        entries: number;
+        exits: number;
+        adjustments: number;
+        lastActivity: Date | null;
+      }
+    >();
+
+    // Inicializar com todos os usuários
+    users.forEach((u) => {
+      userMovementMap.set(u.id, {
+        userId: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        totalMovements: 0,
+        entries: 0,
+        exits: 0,
+        adjustments: 0,
+        lastActivity: null,
+      });
+    });
+
+    // Preencher com movimentações
+    movements.forEach((m) => {
+      const userData = userMovementMap.get(m.createdById);
+      if (userData) {
+        const quantity = Math.abs(m.quantity);
+        userData.totalMovements += 1;
+
+        if (m.type === "ENTRADA") {
+          userData.entries += quantity;
+        } else if (m.type === "SAIDA") {
+          userData.exits += quantity;
+        } else if (m.type === "AJUSTE") {
+          userData.adjustments += quantity;
+        }
+
+        if (!userData.lastActivity || m.createdAt > userData.lastActivity) {
+          userData.lastActivity = m.createdAt;
+        }
+      }
+    });
+
+    // Usuários ativos (que fizeram pelo menos uma movimentação)
+    const activeUserData = Array.from(userMovementMap.values()).filter(
+      (u) => u.totalMovements > 0,
+    );
+
+    const topUsers = activeUserData
+      .sort((a, b) => b.totalMovements - a.totalMovements)
+      .slice(0, limit)
+      .map((u) => ({
+        ...u,
+        lastActivity: u.lastActivity,
+      }));
+
+    const totalUsers = users.length;
+    const activeUsers = activeUserData.length;
+    const averageMovementsPerUser =
+      activeUsers > 0
+        ? parseFloat((totalMovements / activeUsers).toFixed(2))
+        : 0;
+
+    const mostActiveUser =
+      activeUserData.length > 0
+        ? activeUserData[0].name || activeUserData[0].email
+        : null;
+    const mostActiveUserCount =
+      activeUserData.length > 0 ? activeUserData[0].totalMovements : 0;
+
+    // ============================================================
+    // 5. POR PRODUTO (BY PRODUCT)
+    // ============================================================
+
+    const productMovementMap = new Map<
+      string,
+      {
+        productId: string;
+        name: string;
+        sku: string | null;
+        totalMovements: number;
+        entries: number;
+        exits: number;
+        currentQuantity: number;
+        lastMovement: Date | null;
+      }
+    >();
+
+    // Inicializar com todos os produtos
+    products.forEach((p) => {
+      productMovementMap.set(p.id, {
+        productId: p.id,
+        name: p.name,
+        sku: p.sku,
+        totalMovements: 0,
+        entries: 0,
+        exits: 0,
+        currentQuantity: p.quantity,
+        lastMovement: null,
+      });
+    });
+
+    // Preencher com movimentações
+    movements.forEach((m) => {
+      const productData = productMovementMap.get(m.productId);
+      if (productData) {
+        const quantity = Math.abs(m.quantity);
+        productData.totalMovements += 1;
+
+        if (m.type === "ENTRADA") {
+          productData.entries += quantity;
+        } else if (m.type === "SAIDA") {
+          productData.exits += quantity;
+        }
+
+        if (
+          !productData.lastMovement ||
+          m.createdAt > productData.lastMovement
+        ) {
+          productData.lastMovement = m.createdAt;
+        }
+      }
+    });
+
+    const productDataArray = Array.from(productMovementMap.values());
+
+    // Produtos mais movimentados
+    const mostMovedProducts = productDataArray
+      .filter((p) => p.totalMovements > 0)
+      .sort((a, b) => b.totalMovements - a.totalMovements)
+      .slice(0, limit)
+      .map((p) => ({
+        productId: p.productId,
+        name: p.name,
+        sku: p.sku,
+        totalMovements: p.totalMovements,
+        entries: p.entries,
+        exits: p.exits,
+        currentQuantity: p.currentQuantity,
+      }));
+
+    // Produtos menos movimentados (parados)
+    const leastMovedProducts = productDataArray
+      .filter((p) => p.totalMovements === 0)
+      .map((p) => {
+        const daysWithoutMovement = Math.floor(
+          (now.getTime() -
+            new Date(
+              p.lastMovement || p.currentQuantity > 0
+                ? p.lastMovement || now
+                : now,
+            ).getTime()) /
+            (1000 * 60 * 60 * 24),
+        );
+        return {
+          productId: p.productId,
+          name: p.name,
+          sku: p.sku,
+          totalMovements: 0,
+          currentQuantity: p.currentQuantity,
+          daysWithoutMovement: daysWithoutMovement || 0,
+        };
+      })
+      .sort((a, b) => b.daysWithoutMovement - a.daysWithoutMovement)
+      .slice(0, limit);
+
+    // ============================================================
+    // 6. POR MOTIVO (BY REASON)
+    // ============================================================
+
+    const reasonMap = new Map<string, number>();
+    movements.forEach((m) => {
+      const reason = m.reason || "Sem motivo";
+      reasonMap.set(reason, (reasonMap.get(reason) || 0) + 1);
+    });
+
+    const byReason = Array.from(reasonMap.entries())
+      .map(([reason, count]) => ({
+        reason,
+        count,
+        percentage:
+          totalMovements > 0
+            ? parseFloat(((count / totalMovements) * 100).toFixed(2))
+            : 0,
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    // ============================================================
+    // 7. TENDÊNCIAS (TRENDS)
+    // ============================================================
+
+    // 7.1 Distribuição por hora do dia
+    const hourlyMap = new Map<number, { entries: number; exits: number }>();
+    for (let i = 0; i < 24; i++) {
+      hourlyMap.set(i, { entries: 0, exits: 0 });
+    }
+
+    movements.forEach((m) => {
+      const hour = m.createdAt.getHours();
+      const existing = hourlyMap.get(hour);
+      if (existing) {
+        const quantity = Math.abs(m.quantity);
+        if (m.type === "ENTRADA") {
+          existing.entries += quantity;
+        } else if (m.type === "SAIDA") {
+          existing.exits += quantity;
+        }
+      }
+    });
+
+    const hourlyDistribution = Array.from(hourlyMap.entries()).map(
+      ([hour, data]) => ({
+        hour,
+        entries: data.entries,
+        exits: data.exits,
+        total: data.entries + data.exits,
+      }),
+    );
+
+    // 7.2 Distribuição por dia da semana
+    const weekdayMap = new Map<number, { entries: number; exits: number }>();
+    const weekdays = [
+      "Domingo",
+      "Segunda",
+      "Terça",
+      "Quarta",
+      "Quinta",
+      "Sexta",
+      "Sábado",
+    ];
+    for (let i = 0; i < 7; i++) {
+      weekdayMap.set(i, { entries: 0, exits: 0 });
+    }
+
+    movements.forEach((m) => {
+      const dayOfWeek = m.createdAt.getDay();
+      const existing = weekdayMap.get(dayOfWeek);
+      if (existing) {
+        const quantity = Math.abs(m.quantity);
+        if (m.type === "ENTRADA") {
+          existing.entries += quantity;
+        } else if (m.type === "SAIDA") {
+          existing.exits += quantity;
+        }
+      }
+    });
+
+    const weekdayDistribution = Array.from(weekdayMap.entries()).map(
+      ([dayOfWeek, data]) => ({
+        day: weekdays[dayOfWeek],
+        dayOfWeek,
+        entries: data.entries,
+        exits: data.exits,
+        total: data.entries + data.exits,
+      }),
+    );
+
+    // 7.3 Sazonalidade mensal
+    const monthlySeasonalityMap = new Map<
+      number,
+      { entries: number; exits: number }
+    >();
+    const monthNames = [
+      "Jan",
+      "Fev",
+      "Mar",
+      "Abr",
+      "Mai",
+      "Jun",
+      "Jul",
+      "Ago",
+      "Set",
+      "Out",
+      "Nov",
+      "Dez",
+    ];
+    for (let i = 0; i < 12; i++) {
+      monthlySeasonalityMap.set(i, { entries: 0, exits: 0 });
+    }
+
+    movements.forEach((m) => {
+      const month = m.createdAt.getMonth();
+      const existing = monthlySeasonalityMap.get(month);
+      if (existing) {
+        const quantity = Math.abs(m.quantity);
+        if (m.type === "ENTRADA") {
+          existing.entries += quantity;
+        } else if (m.type === "SAIDA") {
+          existing.exits += quantity;
+        }
+      }
+    });
+
+    const monthlySeasonality = Array.from(monthlySeasonalityMap.entries()).map(
+      ([monthNumber, data]) => ({
+        month: monthNames[monthNumber],
+        monthNumber,
+        entries: data.entries,
+        exits: data.exits,
+        total: data.entries + data.exits,
+      }),
+    );
+
+    // ============================================================
+    // 8. MONTAR RESPOSTA
+    // ============================================================
+
+    return {
+      summary: {
+        totalMovements,
+        totalEntries,
+        totalExits,
+        totalAdjustments,
+        entriesExitsRatio,
+        averageMovementsPerDay,
+        periodDays,
+      },
+      byPeriod: {
+        daily,
+        weekly,
+        monthly,
+      },
+      byUser: {
+        topUsers,
+        summary: {
+          activeUsers,
+          totalUsers,
+          averageMovementsPerUser,
+          mostActiveUser,
+          mostActiveUserCount,
+        },
+      },
+      byProduct: {
+        mostMovedProducts,
+        leastMovedProducts,
+      },
+      byReason,
+      trends: {
+        hourlyDistribution,
+        weekdayDistribution,
+        monthlySeasonality,
+      },
+    };
+  },
 };
+
+// Função auxiliar para obter número da semana
+function getWeekNumber(date: Date): number {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+  const week1 = new Date(d.getFullYear(), 0, 4);
+  return (
+    1 +
+    Math.round(
+      ((d.getTime() - week1.getTime()) / 86400000 -
+        3 +
+        ((week1.getDay() + 6) % 7)) /
+        7,
+    )
+  );
+}
