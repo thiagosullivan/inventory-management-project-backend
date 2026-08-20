@@ -235,3 +235,125 @@ export interface ActivityMetricsFilters {
   productId?: string; // Filtrar por produto específico
   type?: string; // Filtrar por tipo (ENTRADA, SAIDA, AJUSTE)
 }
+
+// /dashboard/alerts
+
+export interface AlertsMetricsResponse {
+  summary: {
+    totalAlerts: number;
+    resolvedAlerts: number;
+    activeAlerts: number;
+    resolutionRate: number;
+    averageResolutionTimeHours: number;
+    alertsByType: {
+      type: string;
+      count: number;
+      percentage: number;
+    }[];
+  };
+  activeAlerts: {
+    lowStock: {
+      count: number;
+      products: {
+        id: string;
+        name: string;
+        sku: string | null;
+        quantity: number;
+        minStock: number;
+        location: string | null;
+        supplier: string | null;
+        createdAt: Date;
+      }[];
+    };
+    outOfStock: {
+      count: number;
+      products: {
+        id: string;
+        name: string;
+        sku: string | null;
+        quantity: number;
+        minStock: number;
+        location: string | null;
+        supplier: string | null;
+        createdAt: Date;
+      }[];
+    };
+    expiringSoon: {
+      count: number;
+      products: {
+        id: string;
+        name: string;
+        sku: string | null;
+        quantity: number;
+        expiryDate: Date;
+        location: string | null;
+        supplier: string | null;
+        createdAt: Date;
+      }[];
+    };
+    expired: {
+      count: number;
+      products: {
+        id: string;
+        name: string;
+        sku: string | null;
+        quantity: number;
+        expiryDate: Date;
+        location: string | null;
+        supplier: string | null;
+        createdAt: Date;
+      }[];
+    };
+  };
+  history: {
+    resolvedLast7Days: number;
+    resolvedLast30Days: number;
+    resolutionTrend: {
+      date: string;
+      resolved: number;
+      created: number;
+    }[];
+    topProductsWithAlerts: {
+      productId: string;
+      name: string;
+      sku: string | null;
+      totalAlerts: number;
+      resolvedAlerts: number;
+      activeAlerts: number;
+    }[];
+  };
+  byCategory: {
+    category: string;
+    alertCount: number;
+    lowStock: number;
+    expiringSoon: number;
+    expired: number;
+  }[];
+  details: {
+    recentAlerts: {
+      id: string;
+      productId: string;
+      productName: string;
+      productSku: string | null;
+      alertType: string;
+      message: string;
+      isResolved: boolean;
+      createdAt: Date;
+      resolvedAt: Date | null;
+      resolvedBy: {
+        id: string;
+        name: string | null;
+        email: string;
+      } | null;
+    }[];
+  };
+}
+
+export interface AlertsMetricsFilters {
+  limit?: number; // Para listagens (padrão: 10)
+  alertType?: string; // Filtrar por tipo (LOW_STOCK, EXPIRING_SOON, EXPIRED)
+  isResolved?: boolean; // Filtrar por status de resolução
+  productId?: string; // Filtrar por produto específico
+  startDate?: string; // Data inicial para o histórico (ISO)
+  endDate?: string; // Data final para o histórico (ISO)
+}
