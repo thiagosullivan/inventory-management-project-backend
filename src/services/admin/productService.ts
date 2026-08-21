@@ -628,8 +628,16 @@ export const productService = {
   ): Promise<void> {
     const alerts = [];
 
-    // Alerta de estoque baixo
-    if (minStock !== null && quantity <= minStock) {
+    // ✅ 1. Verificar se está em falta (OUT_OF_STOCK)
+    if (quantity === 0) {
+      alerts.push({
+        productId,
+        alertType: "OUT_OF_STOCK",
+        message: `Produto com estoque zerado`,
+      });
+    }
+    // ✅ 2. Verificar se está com estoque baixo (LOW_STOCK) - apenas se quantity > 0
+    else if (minStock !== null && quantity <= minStock) {
       alerts.push({
         productId,
         alertType: "LOW_STOCK",
@@ -637,7 +645,7 @@ export const productService = {
       });
     }
 
-    // Alerta de produto vencido ou vencendo
+    // ✅ 3. Verificar validade
     if (expiryDate) {
       const now = new Date();
       const thirtyDaysFromNow = new Date();
@@ -660,7 +668,6 @@ export const productService = {
 
     // Criar alertas
     for (const alertData of alerts) {
-      // Verificar se já existe alerta não resolvido
       const existingAlert = await prisma.stockAlert.findFirst({
         where: {
           productId: alertData.productId,
@@ -676,8 +683,10 @@ export const productService = {
       }
     }
 
-    // Resolver alertas que não são mais válidos
-    if (minStock !== null && quantity > minStock) {
+    // ✅ 4. Resolver alertas que não são mais válidos
+
+    // Resolver LOW_STOCK quando quantity > minStock (e quantity > 0)
+    if (minStock !== null && quantity > minStock && quantity > 0) {
       await prisma.stockAlert.updateMany({
         where: {
           productId,
@@ -689,6 +698,57 @@ export const productService = {
           resolvedAt: new Date(),
         },
       });
+    }
+
+    // Resolver OUT_OF_STOCK quando quantity > 0
+    if (quantity > 0) {
+      await prisma.stockAlert.updateMany({
+        where: {
+          productId,
+          alertType: "OUT_OF_STOCK",
+          isResolved: false,
+        },
+        data: {
+          isResolved: true,
+          resolvedAt: new Date(),
+        },
+      });
+    }
+
+    // Resolver alertas de validade
+    if (expiryDate) {
+      const now = new Date();
+      if (expiryDate > now) {
+        // Produto não está mais vencido
+        await prisma.stockAlert.updateMany({
+          where: {
+            productId,
+            alertType: "EXPIRED",
+            isResolved: false,
+          },
+          data: {
+            isResolved: true,
+            resolvedAt: new Date(),
+          },
+        });
+      }
+
+      const thirtyDaysFromNow = new Date();
+      thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+      if (expiryDate > thirtyDaysFromNow) {
+        // Produto não está mais perto de vencer
+        await prisma.stockAlert.updateMany({
+          where: {
+            productId,
+            alertType: "EXPIRING_SOON",
+            isResolved: false,
+          },
+          data: {
+            isResolved: true,
+            resolvedAt: new Date(),
+          },
+        });
+      }
     }
   },
 
