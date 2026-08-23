@@ -15,5 +15,6 @@ router.get(
   isStaff,
   dashboardController.getActivityMetrics,
 );
+router.get("/dashboard/alerts", isStaff, dashboardController.getAlertsMetrics);
 
 export default router;

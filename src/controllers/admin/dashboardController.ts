@@ -148,4 +148,56 @@ export const dashboardController = {
       });
     }
   },
+
+  /**
+   * GET /dashboard/alerts
+   * Get alerts metrics
+   */
+  async getAlertsMetrics(req: Request, res: Response) {
+    try {
+      const limit = req.query.limit ? Number(req.query.limit) : 10;
+      const alertType = req.query.alertType as string;
+      const isResolved =
+        req.query.isResolved === "true"
+          ? true
+          : req.query.isResolved === "false"
+            ? false
+            : undefined;
+      const productId = req.query.productId as string;
+      const startDate = req.query.startDate as string;
+      const endDate = req.query.endDate as string;
+
+      // Validar parâmetros
+      if (limit && (isNaN(limit) || limit < 1)) {
+        return res.status(400).json({
+          success: false,
+          message: "limit deve ser um número positivo",
+          code: "INVALID_LIMIT",
+        });
+      }
+
+      const result = await dashboardService.getAlertsMetrics({
+        limit,
+        alertType,
+        isResolved,
+        productId,
+        startDate,
+        endDate,
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error: any) {
+      console.error("❌ Erro ao buscar métricas de alertas:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Erro ao buscar métricas de alertas",
+        code: "INTERNAL_ERROR",
+        error:
+          process.env.NODE_ENV === "development" ? error.message : undefined,
+      });
+    }
+  },
 };
