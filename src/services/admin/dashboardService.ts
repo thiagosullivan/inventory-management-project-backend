@@ -7,6 +7,8 @@ import {
   StockMetricsResponse,
   ActivityMetricsFilters,
   ActivityMetricsResponse,
+  AlertsMetricsFilters,
+  AlertsMetricsResponse,
 } from "../../types/dashboard.types.js";
 import { MovementType } from "../../generated/prisma/enums.js";
 
@@ -1131,6 +1133,411 @@ export const dashboardService = {
         hourlyDistribution,
         weekdayDistribution,
         monthlySeasonality,
+      },
+    };
+  },
+
+  /**
+   * Get alerts metrics
+   * GET /dashboard/alerts
+   */
+  async getAlertsMetrics(
+    filters?: AlertsMetricsFilters,
+  ): Promise<AlertsMetricsResponse> {
+    const limit = filters?.limit || 10;
+
+    // ============================================================
+    // CONSTRUIR FILTROS
+    // ============================================================
+
+    const where: any = {};
+
+    if (filters?.alertType) {
+      where.alertType = filters.alertType;
+    }
+
+    if (filters?.isResolved !== undefined) {
+      where.isResolved = filters.isResolved;
+    }
+
+    if (filters?.productId) {
+      where.productId = filters.productId;
+    }
+
+    // ============================================================
+    // 1. BUSCAR TODOS OS ALERTAS
+    // ============================================================
+
+    const alerts = await prisma.stockAlert.findMany({
+      where,
+      include: {
+        product: {
+          select: {
+            id: true,
+            name: true,
+            sku: true,
+            quantity: true,
+            minStock: true,
+            expiryDate: true,
+            location: true,
+            supplier: true,
+            category: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    // Buscar produtos para análise por categoria
+    const products = await prisma.product.findMany({
+      select: {
+        id: true,
+        category: true,
+      },
+    });
+
+    const now = new Date();
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    // ============================================================
+    // 2. RESUMO (SUMMARY)
+    // ============================================================
+
+    const totalAlerts = alerts.length;
+    const resolvedAlerts = alerts.filter((a) => a.isResolved).length;
+    const activeAlerts = alerts.filter((a) => !a.isResolved).length;
+    const resolutionRate =
+      totalAlerts > 0
+        ? parseFloat(((resolvedAlerts / totalAlerts) * 100).toFixed(2))
+        : 0;
+
+    // Calcular tempo médio de resolução (em horas)
+    let totalResolutionTime = 0;
+    let resolvedWithTime = 0;
+    alerts.forEach((a) => {
+      if (a.isResolved && a.resolvedAt) {
+        const diffInHours =
+          (a.resolvedAt.getTime() - a.createdAt.getTime()) / (1000 * 60 * 60);
+        totalResolutionTime += diffInHours;
+        resolvedWithTime++;
+      }
+    });
+    const averageResolutionTimeHours =
+      resolvedWithTime > 0
+        ? parseFloat((totalResolutionTime / resolvedWithTime).toFixed(2))
+        : 0;
+
+    // Alertas por tipo
+    const typeMap = new Map<string, number>();
+    alerts.forEach((a) => {
+      let type = a.alertType;
+      // Se for LOW_STOCK com quantity === 0, considerar como OUT_OF_STOCK
+      if (type === "LOW_STOCK" && a.product.quantity === 0) {
+        type = "OUT_OF_STOCK";
+      }
+      typeMap.set(type, (typeMap.get(type) || 0) + 1);
+    });
+
+    const alertsByType = Array.from(typeMap.entries())
+      .map(([type, count]) => ({
+        type,
+        count,
+        percentage:
+          totalAlerts > 0
+            ? parseFloat(((count / totalAlerts) * 100).toFixed(2))
+            : 0,
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    // ============================================================
+    // 3. ALERTAS ATIVOS (ACTIVE ALERTS)
+    // ============================================================
+
+    const activeAlertsList = alerts.filter((a) => !a.isResolved);
+
+    // 3.1 Low Stock (apenas produtos com quantity > 0 e quantity <= minStock)
+    const lowStockAlerts = activeAlertsList
+      .filter((a) => a.alertType === "LOW_STOCK" && a.product.quantity > 0)
+      .map((a) => ({
+        id: a.product.id,
+        name: a.product.name,
+        sku: a.product.sku,
+        quantity: a.product.quantity,
+        minStock: a.product.minStock || 0,
+        location: a.product.location,
+        supplier: a.product.supplier,
+        createdAt: a.createdAt,
+      }));
+
+    // 3.2 Out of Stock (produtos com quantity === 0)
+    // Inclui alertas do tipo OUT_OF_STOCK e também LOW_STOCK com quantity === 0
+    const outOfStockAlerts = activeAlertsList
+      .filter(
+        (a) =>
+          a.alertType === "OUT_OF_STOCK" ||
+          (a.alertType === "LOW_STOCK" && a.product.quantity === 0),
+      )
+      .map((a) => ({
+        id: a.product.id,
+        name: a.product.name,
+        sku: a.product.sku,
+        quantity: a.product.quantity,
+        minStock: a.product.minStock || 0,
+        location: a.product.location,
+        supplier: a.product.supplier,
+        createdAt: a.createdAt,
+      }));
+
+    // 3.3 Expiring Soon
+    const expiringSoonAlerts = activeAlertsList
+      .filter((a) => a.alertType === "EXPIRING_SOON")
+      .map((a) => ({
+        id: a.product.id,
+        name: a.product.name,
+        sku: a.product.sku,
+        quantity: a.product.quantity,
+        expiryDate: a.product.expiryDate || new Date(),
+        location: a.product.location,
+        supplier: a.product.supplier,
+        createdAt: a.createdAt,
+      }));
+
+    // 3.4 Expired
+    const expiredAlerts = activeAlertsList
+      .filter((a) => a.alertType === "EXPIRED")
+      .map((a) => ({
+        id: a.product.id,
+        name: a.product.name,
+        sku: a.product.sku,
+        quantity: a.product.quantity,
+        expiryDate: a.product.expiryDate || new Date(),
+        location: a.product.location,
+        supplier: a.product.supplier,
+        createdAt: a.createdAt,
+      }));
+
+    // ============================================================
+    // 4. HISTÓRICO (HISTORY)
+    // ============================================================
+
+    const resolvedLast7Days = alerts.filter(
+      (a) => a.isResolved && a.resolvedAt && a.resolvedAt >= sevenDaysAgo,
+    ).length;
+
+    const resolvedLast30Days = alerts.filter(
+      (a) => a.isResolved && a.resolvedAt && a.resolvedAt >= thirtyDaysAgo,
+    ).length;
+
+    // Tendência de resolução (últimos 7 dias)
+    const trendMap = new Map<string, { resolved: number; created: number }>();
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(sevenDaysAgo);
+      date.setDate(date.getDate() + i);
+      const dateKey = date.toISOString().split("T")[0];
+      trendMap.set(dateKey, { resolved: 0, created: 0 });
+    }
+
+    alerts.forEach((a) => {
+      const createdKey = a.createdAt.toISOString().split("T")[0];
+      const created = trendMap.get(createdKey);
+      if (created) {
+        created.created++;
+      }
+
+      if (a.isResolved && a.resolvedAt) {
+        const resolvedKey = a.resolvedAt.toISOString().split("T")[0];
+        const resolved = trendMap.get(resolvedKey);
+        if (resolved) {
+          resolved.resolved++;
+        }
+      }
+    });
+
+    const resolutionTrend = Array.from(trendMap.entries())
+      .map(([date, data]) => ({
+        date,
+        resolved: data.resolved,
+        created: data.created,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // Top produtos com mais alertas
+    const productAlertMap = new Map<
+      string,
+      {
+        total: number;
+        resolved: number;
+        active: number;
+        name: string;
+        sku: string | null;
+      }
+    >();
+
+    alerts.forEach((a) => {
+      const existing = productAlertMap.get(a.productId);
+      if (existing) {
+        existing.total++;
+        if (a.isResolved) {
+          existing.resolved++;
+        } else {
+          existing.active++;
+        }
+      } else {
+        productAlertMap.set(a.productId, {
+          total: 1,
+          resolved: a.isResolved ? 1 : 0,
+          active: a.isResolved ? 0 : 1,
+          name: a.product.name,
+          sku: a.product.sku,
+        });
+      }
+    });
+
+    const topProductsWithAlerts = Array.from(productAlertMap.entries())
+      .map(([productId, data]) => ({
+        productId,
+        name: data.name,
+        sku: data.sku,
+        totalAlerts: data.total,
+        resolvedAlerts: data.resolved,
+        activeAlerts: data.active,
+      }))
+      .sort((a, b) => b.totalAlerts - a.totalAlerts)
+      .slice(0, limit);
+
+    // ============================================================
+    // 5. POR CATEGORIA (BY CATEGORY)
+    // ============================================================
+
+    const categoryAlertMap = new Map<
+      string,
+      { lowStock: number; expiringSoon: number; expired: number }
+    >();
+
+    // Inicializar com todas as categorias
+    const allCategories = new Set(products.map((p) => p.category || "OUTROS"));
+    allCategories.forEach((cat) => {
+      categoryAlertMap.set(cat, { lowStock: 0, expiringSoon: 0, expired: 0 });
+    });
+
+    alerts.forEach((a) => {
+      const category = a.product.category || "OUTROS";
+      const existing = categoryAlertMap.get(category);
+      if (existing) {
+        if (a.alertType === "LOW_STOCK") {
+          existing.lowStock++;
+        } else if (a.alertType === "EXPIRING_SOON") {
+          existing.expiringSoon++;
+        } else if (a.alertType === "EXPIRED") {
+          existing.expired++;
+        }
+      }
+    });
+
+    const byCategory = Array.from(categoryAlertMap.entries())
+      .map(([category, data]) => ({
+        category,
+        alertCount: data.lowStock + data.expiringSoon + data.expired,
+        lowStock: data.lowStock,
+        expiringSoon: data.expiringSoon,
+        expired: data.expired,
+      }))
+      .filter((c) => c.alertCount > 0)
+      .sort((a, b) => b.alertCount - a.alertCount);
+
+    // ============================================================
+    // 6. DETALHES (DETAILS) - Alertas Recentes
+    // ============================================================
+
+    // Buscar todos os IDs de usuários que resolveram alertas
+    const resolvedByUserIds = alerts
+      .filter((a) => a.resolvedBy)
+      .map((a) => a.resolvedBy as string)
+      .filter((id): id is string => id !== null && id !== undefined);
+
+    // Buscar informações dos usuários que resolveram alertas
+    const resolvedByUsers = await prisma.user.findMany({
+      where: {
+        id: { in: resolvedByUserIds },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+    });
+
+    // Criar um mapa para lookup rápido
+    const userMap = new Map(resolvedByUsers.map((u) => [u.id, u]));
+
+    const recentAlerts = alerts.slice(0, limit).map((a) => {
+      const user = a.resolvedBy ? userMap.get(a.resolvedBy) : null;
+
+      return {
+        id: a.id,
+        productId: a.productId,
+        productName: a.product.name,
+        productSku: a.product.sku,
+        alertType: a.alertType,
+        message: a.message,
+        isResolved: a.isResolved,
+        createdAt: a.createdAt,
+        resolvedAt: a.resolvedAt || null,
+        resolvedBy: user
+          ? {
+              id: user.id,
+              name: user.name,
+              email: user.email,
+            }
+          : null,
+      };
+    });
+
+    // ============================================================
+    // 7. MONTAR RESPOSTA
+    // ============================================================
+
+    return {
+      summary: {
+        totalAlerts,
+        resolvedAlerts,
+        activeAlerts,
+        resolutionRate,
+        averageResolutionTimeHours,
+        alertsByType,
+      },
+      activeAlerts: {
+        lowStock: {
+          count: lowStockAlerts.length,
+          products: lowStockAlerts.slice(0, limit),
+        },
+        outOfStock: {
+          count: outOfStockAlerts.length,
+          products: outOfStockAlerts.slice(0, limit),
+        },
+        expiringSoon: {
+          count: expiringSoonAlerts.length,
+          products: expiringSoonAlerts.slice(0, limit),
+        },
+        expired: {
+          count: expiredAlerts.length,
+          products: expiredAlerts.slice(0, limit),
+        },
+      },
+      history: {
+        resolvedLast7Days,
+        resolvedLast30Days,
+        resolutionTrend,
+        topProductsWithAlerts,
+      },
+      byCategory,
+      details: {
+        recentAlerts,
       },
     };
   },
