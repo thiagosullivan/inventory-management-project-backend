@@ -357,3 +357,12 @@ export interface AlertsMetricsFilters {
   startDate?: string; // Data inicial para o histórico (ISO)
   endDate?: string; // Data final para o histórico (ISO)
 }
+
+export interface ExportFilters {
+  periodDays?: number; // Padrão: 30
+  format?: "csv" | "json"; // Padrão: csv
+  includeOverview?: boolean;
+  includeStock?: boolean;
+  includeActivity?: boolean;
+  includeAlerts?: boolean;
+}
