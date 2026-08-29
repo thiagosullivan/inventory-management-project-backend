@@ -4,6 +4,7 @@ import adminRouter from "./admin/adminRoutes";
 import categoryRouter from "./admin/categoryRoutes.js";
 import productRouter from "./admin/productRoutes.js";
 import dashboardRouter from "./admin/dashboardRoutes.js";
+import exportRouter from "./admin/exportRoutes.js";
 
 const router = express.Router();
 
@@ -21,6 +22,9 @@ router.use("/admin", productRouter);
 
 // Dashboard routes
 router.use("/admin", dashboardRouter);
+
+// Export routes
+router.use("/admin", exportRouter);
 
 // Health check
 router.get("/health", async (req, res) => {
