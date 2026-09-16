@@ -29,11 +29,10 @@ export const productService = {
     data: CreateProductData,
     userId: string,
   ): Promise<ProductResponse> {
-    // 1. Validar dados
+    // 1. Validar dados (sem categoryId)
     const validation = validateProductData({
       name: data.name,
       sku: data.sku,
-      category: data.category,
       quantity: data.quantity,
       minStock: data.minStock,
       maxStock: data.maxStock,
@@ -42,7 +41,7 @@ export const productService = {
       throw new Error(`Dados inválidos: ${validation.errors.join(", ")}`);
     }
 
-    // 2. Verificar se SKU já existe (se fornecido)
+    // 2. Verificar se SKU já existe
     if (data.sku) {
       const exists = await skuExists(prisma, data.sku);
       if (exists) {
@@ -50,13 +49,22 @@ export const productService = {
       }
     }
 
-    // 3. Criar produto
+    // 3. Verificar se a categoria existe
+    const categoryExists = await prisma.customCategory.findUnique({
+      where: { id: data.categoryId },
+      select: { id: true },
+    });
+    if (!categoryExists) {
+      throw new Error("Categoria não encontrada");
+    }
+
+    // 4. Criar produto
     const product = await prisma.product.create({
       data: {
         name: data.name.trim(),
         sku: data.sku?.trim() || null,
         description: data.description?.trim() || null,
-        category: data.category,
+        categoryId: data.categoryId,
         quantity: data.quantity || 0,
         minStock: data.minStock || 5,
         maxStock: data.maxStock || null,
@@ -67,24 +75,13 @@ export const productService = {
         createdById: userId,
       },
       include: {
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        updatedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
+        createdBy: { select: { id: true, name: true, email: true } },
+        updatedBy: { select: { id: true, name: true, email: true } },
+        category: { select: { id: true, name: true } },
       },
     });
 
-    // 4. Criar histórico inicial
+    // 5. Criar histórico inicial
     await prisma.stockHistory.create({
       data: {
         productId: product.id,
@@ -95,7 +92,7 @@ export const productService = {
       },
     });
 
-    // 5. Verificar alertas de estoque
+    // 6. Verificar alertas
     await this.checkStockAlerts(
       product.id,
       product.quantity,
@@ -111,7 +108,7 @@ export const productService = {
    */
   async listProducts(
     filters?: ProductFilters,
-    userId?: string,
+    // userId?: string,
   ): Promise<ProductsListResponse> {
     // 1. Construir filtros
     const where: any = {};
@@ -126,8 +123,8 @@ export const productService = {
     }
 
     // Filtro por categoria
-    if (filters?.category) {
-      where.category = filters.category;
+    if (filters?.categoryId) {
+      where.category = filters.categoryId;
     }
 
     // Filtro por quantidade
@@ -170,15 +167,15 @@ export const productService = {
     }
 
     // Filtro por usuário (se for STAFF, só vê seus produtos)
-    if (userId) {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { role: true },
-      });
-      if (user?.role === Role.STAFF) {
-        where.createdById = userId;
-      }
-    }
+    // if (userId) {
+    //   const user = await prisma.user.findUnique({
+    //     where: { id: userId },
+    //     select: { role: true },
+    //   });
+    //   if (user?.role === Role.STAFF) {
+    //     where.createdById = userId;
+    //   }
+    // }
 
     // 2. Paginação
     const page = filters?.page || 1;
@@ -307,13 +304,7 @@ export const productService = {
     const existingProduct = await prisma.product.findUnique({
       where: { id: productId },
       include: {
-        createdBy: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
-          },
-        },
+        createdBy: { select: { id: true, email: true, name: true } },
       },
     });
 
@@ -321,6 +312,7 @@ export const productService = {
       throw new Error("Produto não encontrado");
     }
 
+    // 2. Verificar permissão
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { role: true },
@@ -335,22 +327,22 @@ export const productService = {
       );
     }
 
-    // 3. Validar dados
+    // 3. Validar dados (sem category)
     if (data.name) {
       const validation = validateProductData({
         name: data.name,
         sku: data.sku,
-        category: data.category,
         quantity: data.quantity,
         minStock: data.minStock,
         maxStock: data.maxStock,
+        // 🔹 sem category/categoryId — validado pela query abaixo
       });
       if (!validation.isValid) {
         throw new Error(`Dados inválidos: ${validation.errors.join(", ")}`);
       }
     }
 
-    // 4. Verificar se SKU já existe (se fornecido)
+    // 4. Verificar SKU duplicado
     if (data.sku) {
       const exists = await skuExists(prisma, data.sku, productId);
       if (exists) {
@@ -358,12 +350,23 @@ export const productService = {
       }
     }
 
-    // 5. Preparar dados para atualização
+    // 5. Verificar se a nova categoria existe (só se foi enviada)  🔹 NOVO
+    if (data.categoryId !== undefined) {
+      const categoryExists = await prisma.customCategory.findUnique({
+        where: { id: data.categoryId },
+        select: { id: true },
+      });
+      if (!categoryExists) {
+        throw new Error("Categoria não encontrada");
+      }
+    }
+
+    // 6. Preparar dados para atualização
     const updateData: any = {
       name: data.name?.trim(),
       sku: data.sku?.trim() || null,
       description: data.description?.trim() || null,
-      category: data.category,
+      categoryId: data.categoryId, // 🔹 era: category
       minStock: data.minStock,
       maxStock: data.maxStock,
       expiryDate: data.expiryDate
@@ -384,14 +387,13 @@ export const productService = {
       }
     });
 
-    // 6. Se quantidade mudou, registrar histórico
+    // 7. Se quantidade mudou, registrar histórico
     if (
       data.quantity !== undefined &&
       data.quantity !== existingProduct.quantity
     ) {
       updateData.quantity = data.quantity;
 
-      // Criar histórico de alteração
       await prisma.stockHistory.create({
         data: {
           productId: productId,
@@ -402,7 +404,6 @@ export const productService = {
         },
       });
 
-      // Verificar alertas de estoque
       await this.checkStockAlerts(
         productId,
         data.quantity,
@@ -413,25 +414,14 @@ export const productService = {
       );
     }
 
-    // 7. Atualizar produto
+    // 8. Atualizar produto
     const updatedProduct = await prisma.product.update({
       where: { id: productId },
       data: updateData,
       include: {
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        updatedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
+        createdBy: { select: { id: true, name: true, email: true } },
+        updatedBy: { select: { id: true, name: true, email: true } },
+        category: { select: { id: true, name: true } }, // 🔹 NOVO
       },
     });
 
@@ -798,7 +788,12 @@ export const productService = {
         quantity: true,
         minStock: true,
         expiryDate: true,
-        category: true,
+        category: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
     });
 
@@ -821,13 +816,27 @@ export const productService = {
     ).length;
 
     // Agrupar por categoria
-    const categoryMap = new Map();
-    for (const product of products) {
-      const key = product.category;
-      if (!categoryMap.has(key)) {
-        categoryMap.set(key, { category: key, count: 0, items: 0 });
+    const categoryMap = new Map<
+      string,
+      {
+        categoryId: string;
+        categoryName: string;
+        count: number;
+        items: number;
       }
-      const cat = categoryMap.get(key);
+    >();
+
+    for (const product of products) {
+      const id = product.category.id;
+      if (!categoryMap.has(id)) {
+        categoryMap.set(id, {
+          categoryId: id,
+          categoryName: product.category.name,
+          count: 0,
+          items: 0,
+        });
+      }
+      const cat = categoryMap.get(id)!;
       cat.count += 1;
       cat.items += product.quantity;
     }

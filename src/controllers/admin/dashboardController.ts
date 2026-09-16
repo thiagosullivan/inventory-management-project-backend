@@ -58,7 +58,7 @@ export const dashboardController = {
   async getStockMetrics(req: Request, res: Response) {
     try {
       const limit = req.query.limit ? Number(req.query.limit) : 10;
-      const category = req.query.category as string;
+      const categoryId = req.query.categoryId as string;
       const location = req.query.location as string;
       const supplier = req.query.supplier as string;
 
@@ -73,7 +73,7 @@ export const dashboardController = {
 
       const result = await dashboardService.getStockMetrics({
         limit,
-        category,
+        categoryId,
         location,
         supplier,
       });

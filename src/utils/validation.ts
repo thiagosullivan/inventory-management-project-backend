@@ -123,7 +123,7 @@ export async function categoryNameExists(
 export function validateProductData(data: {
   name: string;
   sku?: string;
-  category?: string;
+  categoryId?: string;
   quantity?: number;
   minStock?: number;
   maxStock?: number;

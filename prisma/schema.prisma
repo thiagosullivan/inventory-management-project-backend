@@ -13,16 +13,6 @@ enum Role {
   STAFF
 }
 
-enum ProductCategory {
-  ALMOXARIFADO
-  ALIMENTOS
-  LIMPEZA
-  ESCRITORIO
-  FERRAMENTAS
-  EQUIPAMENTOS
-  OUTROS
-}
-
 enum MovementType {
   ENTRADA
   SAIDA
@@ -120,11 +110,17 @@ model Verification {
 // ============== Old models ==============
 
 model Product {
-  id          String          @id @default(cuid())
+  id          String  @id @default(cuid())
   name        String
-  sku         String?         @unique(map: "product_sku_key")
+  sku         String? @unique(map: "product_sku_key")
   description String?
-  category    ProductCategory @default(OUTROS)
+  imageUrl    String?
+
+  categoryId String
+  category   CustomCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  priceInCents Int? //  (ex: R$ 19,90 → 1990)
+  // currency  String? @default("BRL")
 
   quantity Int  @default(0)
   minStock Int? @default(5)
@@ -148,7 +144,7 @@ model Product {
   stockAlerts  StockAlert[]
 
   @@index([name])
-  @@index([category])
+  @@index([categoryId])
   @@index([expiryDate])
   @@index([createdAt])
   @@index([createdById])
@@ -220,4 +216,6 @@ model CustomCategory {
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  products Product[]
 }

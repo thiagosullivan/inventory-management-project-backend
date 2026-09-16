@@ -22,16 +22,21 @@ export interface DashboardOverviewResponse {
       id: string;
       name: string;
       sku: string | null;
+      imageUrl: string | null;
+      priceInCents: number | null;
       quantity: number;
     }[];
     highestQuantityProducts: {
       id: string;
       name: string;
       sku: string | null;
+      imageUrl: string | null;
+      priceInCents: number | null;
       quantity: number;
     }[];
     categoryDistribution: {
-      category: string;
+      categoryId: string;
+      categoryName: string;
       count: number;
     }[];
   };
@@ -74,7 +79,8 @@ export interface StockMetricsResponse {
   };
   distribution: {
     byCategory: {
-      category: string;
+      categoryId: string;
+      categoryName: string;
       count: number;
       totalUnits: number;
     }[];
@@ -94,6 +100,8 @@ export interface StockMetricsResponse {
       id: string;
       name: string;
       sku: string | null;
+      imageUrl: string | null;
+      priceInCents: number | null;
       quantity: number;
       minStock: number | null;
       location: string | null;
@@ -104,6 +112,8 @@ export interface StockMetricsResponse {
       id: string;
       name: string;
       sku: string | null;
+      imageUrl: string | null;
+      priceInCents: number | null;
       quantity: number;
       expiryDate: Date;
       location: string | null;
@@ -113,6 +123,8 @@ export interface StockMetricsResponse {
       id: string;
       name: string;
       sku: string | null;
+      imageUrl: string | null;
+      priceInCents: number | null;
       location: string | null;
       supplier: string | null;
     }[];
@@ -121,7 +133,7 @@ export interface StockMetricsResponse {
 
 export interface StockMetricsFilters {
   limit?: number; // Para listagens detalhadas (padrão: 10)
-  category?: string; // Filtrar por categoria
+  categoryId?: string; // Filtrar por categoria
   location?: string; // Filtrar por localização
   supplier?: string; // Filtrar por fornecedor
 }
@@ -185,6 +197,8 @@ export interface ActivityMetricsResponse {
       productId: string;
       name: string;
       sku: string | null;
+      imageUrl: string | null;
+      priceInCents: number | null;
       totalMovements: number;
       entries: number;
       exits: number;
@@ -194,6 +208,8 @@ export interface ActivityMetricsResponse {
       productId: string;
       name: string;
       sku: string | null;
+      imageUrl: string | null;
+      priceInCents: number | null;
       totalMovements: number;
       currentQuantity: number;
       daysWithoutMovement: number;
@@ -258,6 +274,8 @@ export interface AlertsMetricsResponse {
         id: string;
         name: string;
         sku: string | null;
+        imageUrl: string | null;
+        priceInCents: number | null;
         quantity: number;
         minStock: number;
         location: string | null;
@@ -271,6 +289,8 @@ export interface AlertsMetricsResponse {
         id: string;
         name: string;
         sku: string | null;
+        imageUrl: string | null;
+        priceInCents: number | null;
         quantity: number;
         minStock: number;
         location: string | null;
@@ -284,6 +304,8 @@ export interface AlertsMetricsResponse {
         id: string;
         name: string;
         sku: string | null;
+        imageUrl: string | null;
+        priceInCents: number | null;
         quantity: number;
         expiryDate: Date;
         location: string | null;
@@ -297,6 +319,8 @@ export interface AlertsMetricsResponse {
         id: string;
         name: string;
         sku: string | null;
+        imageUrl: string | null;
+        priceInCents: number | null;
         quantity: number;
         expiryDate: Date;
         location: string | null;
@@ -317,13 +341,16 @@ export interface AlertsMetricsResponse {
       productId: string;
       name: string;
       sku: string | null;
+      imageUrl: string | null;
+      priceInCents: number | null;
       totalAlerts: number;
       resolvedAlerts: number;
       activeAlerts: number;
     }[];
   };
   byCategory: {
-    category: string;
+    categoryId: string;
+    categoryName: string;
     alertCount: number;
     lowStock: number;
     expiringSoon: number;

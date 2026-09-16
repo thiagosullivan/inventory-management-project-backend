@@ -39,11 +39,18 @@ export const dashboardService = {
         minStock: true,
         maxStock: true,
         expiryDate: true,
-        category: true,
+        category: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         createdById: true,
         createdAt: true,
         updatedAt: true,
         updatedById: true,
+        imageUrl: true,
+        priceInCents: true,
       },
     });
 
@@ -162,6 +169,8 @@ export const dashboardService = {
         id: p.id,
         name: p.name,
         sku: p.sku,
+        imageUrl: p.imageUrl,
+        priceInCents: p.priceInCents,
         quantity: p.quantity,
       }))
       .sort((a, b) => a.quantity - b.quantity)
@@ -175,22 +184,33 @@ export const dashboardService = {
         name: p.name,
         sku: p.sku,
         quantity: p.quantity,
+        imageUrl: p.imageUrl,
+        priceInCents: p.priceInCents,
       }))
       .sort((a, b) => b.quantity - a.quantity)
       .slice(0, 5);
 
     // Distribuição por categoria
-    const categoryMap = new Map<string, number>();
+    const categoryMap = new Map<
+      string,
+      { categoryId: string; categoryName: string; count: number }
+    >();
+
     products.forEach((p) => {
-      const category = p.category || "OUTROS";
-      categoryMap.set(category, (categoryMap.get(category) || 0) + 1);
+      const id = p.category.id;
+      if (!categoryMap.has(id)) {
+        categoryMap.set(id, {
+          categoryId: id,
+          categoryName: p.category.name,
+          count: 0,
+        });
+      }
+      categoryMap.get(id)!.count += 1;
     });
-    const categoryDistribution = Array.from(categoryMap.entries())
-      .map(([category, count]) => ({
-        category,
-        count,
-      }))
-      .sort((a, b) => b.count - a.count);
+
+    const categoryDistribution = Array.from(categoryMap.values()).sort(
+      (a, b) => b.count - a.count,
+    );
 
     // ============================================================
     // 5. TENDÊNCIAS (TRENDS)
@@ -199,10 +219,10 @@ export const dashboardService = {
     // Movimentações diárias dos últimos 7 dias
     const dailyMap = new Map<string, { entries: number; exits: number }>();
 
-    // Inicializar todos os dias do período
-    for (let i = 0; i < trendDays; i++) {
-      const date = new Date(trendStart);
-      date.setDate(date.getDate() + i);
+    // Gera exatamente 7 dias terminando HOJE (ex: do dia 08 ao dia 14)
+    for (let i = trendDays - 1; i >= 0; i--) {
+      const date = new Date(now);
+      date.setDate(date.getDate() - i);
       const dateKey = date.toISOString().split("T")[0];
       dailyMap.set(dateKey, { entries: 0, exits: 0 });
     }
@@ -284,15 +304,22 @@ export const dashboardService = {
         minStock: true,
         maxStock: true,
         expiryDate: true,
-        category: true,
+        category: {
+          // 🔹 ajustado
+          select: {
+            id: true,
+            name: true,
+          },
+        },
         location: true,
         supplier: true,
         createdAt: true,
         updatedAt: true,
+        imageUrl: true,
+        priceInCents: true,
       },
-      // Aplicar filtros se fornecidos
       where: {
-        ...(filters?.category && { category: filters.category as any }),
+        ...(filters?.categoryId && { categoryId: filters.categoryId }), // 🔹 ajustado
         ...(filters?.location && {
           location: { contains: filters.location, mode: "insensitive" },
         }),
@@ -306,10 +333,7 @@ export const dashboardService = {
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
-    // ============================================================
-    // 1. RESUMO (SUMMARY)
-    // ============================================================
-
+    // ===== 1. SUMMARY =====
     const totalProducts = products.length;
     const totalUnits = products.reduce((sum, p) => sum + p.quantity, 0);
     const averageStockPerProduct =
@@ -321,10 +345,7 @@ export const dashboardService = {
       (p) => p.quantity === 0,
     ).length;
 
-    // ============================================================
-    // 2. STATUS DO ESTOQUE (STOCK STATUS)
-    // ============================================================
-
+    // ===== 2. STOCK STATUS =====
     let healthy = 0;
     let low = 0;
     let outOfStock = 0;
@@ -336,7 +357,7 @@ export const dashboardService = {
         outOfStock++;
       } else if (p.minStock === null) {
         noMinStockDefined++;
-        healthy++; // Considerar como saudável se não tem minStock definido
+        healthy++;
       } else if (p.quantity <= p.minStock) {
         low++;
       } else if (p.maxStock !== null && p.quantity >= p.maxStock) {
@@ -346,10 +367,7 @@ export const dashboardService = {
       }
     });
 
-    // ============================================================
-    // 3. STATUS DE VALIDADE (EXPIRY STATUS)
-    // ============================================================
-
+    // ===== 3. EXPIRY STATUS =====
     let expired = 0;
     let expiringSoon = 0;
     let valid = 0;
@@ -360,7 +378,6 @@ export const dashboardService = {
         noExpiryDate++;
         return;
       }
-
       const expiryDate = new Date(p.expiryDate);
       if (expiryDate < now) {
         expired++;
@@ -371,31 +388,39 @@ export const dashboardService = {
       }
     });
 
-    // ============================================================
-    // 4. DISTRIBUIÇÃO (DISTRIBUTION)
-    // ============================================================
+    // ===== 4. DISTRIBUTION =====
 
-    // Por categoria
-    const categoryMap = new Map<string, { count: number; units: number }>();
+    // Por categoria  🔹 ajustado
+    const categoryMap = new Map<
+      string,
+      { categoryId: string; categoryName: string; count: number; units: number }
+    >();
+
     products.forEach((p) => {
-      const category = p.category || "OUTROS";
-      const existing = categoryMap.get(category);
-      if (existing) {
-        existing.count++;
-        existing.units += p.quantity;
-      } else {
-        categoryMap.set(category, { count: 1, units: p.quantity });
+      const id = p.category.id;
+      if (!categoryMap.has(id)) {
+        categoryMap.set(id, {
+          categoryId: id,
+          categoryName: p.category.name,
+          count: 0,
+          units: 0,
+        });
       }
+      const existing = categoryMap.get(id)!;
+      existing.count++;
+      existing.units += p.quantity;
     });
-    const byCategory = Array.from(categoryMap.entries())
-      .map(([category, data]) => ({
-        category,
+
+    const byCategory = Array.from(categoryMap.values())
+      .map((data) => ({
+        categoryId: data.categoryId,
+        categoryName: data.categoryName,
         count: data.count,
         totalUnits: data.units,
       }))
       .sort((a, b) => b.count - a.count);
 
-    // Por localização
+    // Por localização (sem alteração)
     const locationMap = new Map<string, { count: number; units: number }>();
     products.forEach((p) => {
       const location = p.location || "Não definido";
@@ -414,9 +439,9 @@ export const dashboardService = {
         totalUnits: data.units,
       }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 10); // Top 10 localizações
+      .slice(0, 10);
 
-    // Por fornecedor
+    // Por fornecedor (sem alteração)
     const supplierMap = new Map<string, { count: number; units: number }>();
     products.forEach((p) => {
       const supplier = p.supplier || "Não definido";
@@ -435,13 +460,11 @@ export const dashboardService = {
         totalUnits: data.units,
       }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 10); // Top 10 fornecedores
+      .slice(0, 10);
 
-    // ============================================================
-    // 5. DETALHES (DETAILS) - Listas com limit
-    // ============================================================
+    // ===== 5. DETAILS =====
 
-    // Produtos com estoque baixo
+    // 🔹 corrigido p.imageUrl (era p.id)
     const productsWithLowStock = products
       .filter(
         (p) =>
@@ -451,6 +474,8 @@ export const dashboardService = {
         id: p.id,
         name: p.name,
         sku: p.sku,
+        imageUrl: p.imageUrl, // 🔹 era p.id
+        priceInCents: p.priceInCents,
         quantity: p.quantity,
         minStock: p.minStock,
         location: p.location,
@@ -463,7 +488,6 @@ export const dashboardService = {
       )
       .slice(0, limit);
 
-    // Produtos vencendo em breve
     const productsExpiringSoon = products
       .filter((p) => {
         if (!p.expiryDate) return false;
@@ -474,6 +498,8 @@ export const dashboardService = {
         id: p.id,
         name: p.name,
         sku: p.sku,
+        imageUrl: p.imageUrl, // 🔹 era p.id
+        priceInCents: p.priceInCents,
         quantity: p.quantity,
         expiryDate: p.expiryDate!,
         location: p.location,
@@ -485,22 +511,20 @@ export const dashboardService = {
       )
       .slice(0, limit);
 
-    // Produtos em falta (out of stock)
     const productsOutOfStock = products
       .filter((p) => p.quantity === 0)
       .map((p) => ({
         id: p.id,
         name: p.name,
         sku: p.sku,
+        imageUrl: p.imageUrl, // 🔹 era p.id
+        priceInCents: p.priceInCents,
         location: p.location,
         supplier: p.supplier,
       }))
       .slice(0, limit);
 
-    // ============================================================
-    // 6. MONTAR RESPOSTA
-    // ============================================================
-
+    // ===== 6. RESPOSTA =====
     return {
       summary: {
         totalProducts,
@@ -599,6 +623,8 @@ export const dashboardService = {
             id: true,
             name: true,
             sku: true,
+            imageUrl: true,
+            priceInCents: true,
             quantity: true,
           },
         },
@@ -627,6 +653,8 @@ export const dashboardService = {
         sku: true,
         quantity: true,
         updatedAt: true,
+        imageUrl: true,
+        priceInCents: true,
       },
     });
 
@@ -871,6 +899,8 @@ export const dashboardService = {
         productId: string;
         name: string;
         sku: string | null;
+        imageUrl: string | null;
+        priceInCents: number | null;
         totalMovements: number;
         entries: number;
         exits: number;
@@ -890,6 +920,8 @@ export const dashboardService = {
         exits: 0,
         currentQuantity: p.quantity,
         lastMovement: null,
+        imageUrl: p.imageUrl,
+        priceInCents: p.priceInCents,
       });
     });
 
@@ -926,6 +958,8 @@ export const dashboardService = {
         productId: p.productId,
         name: p.name,
         sku: p.sku,
+        imageUrl: p.imageUrl,
+        priceInCents: p.priceInCents,
         totalMovements: p.totalMovements,
         entries: p.entries,
         exits: p.exits,
@@ -949,6 +983,8 @@ export const dashboardService = {
           productId: p.productId,
           name: p.name,
           sku: p.sku,
+          imageUrl: p.imageUrl,
+          priceInCents: p.priceInCents,
           totalMovements: 0,
           currentQuantity: p.currentQuantity,
           daysWithoutMovement: daysWithoutMovement || 0,
@@ -1176,6 +1212,8 @@ export const dashboardService = {
             id: true,
             name: true,
             sku: true,
+            imageUrl: true,
+            priceInCents: true,
             quantity: true,
             minStock: true,
             expiryDate: true,
@@ -1267,6 +1305,8 @@ export const dashboardService = {
         id: a.product.id,
         name: a.product.name,
         sku: a.product.sku,
+        imageUrl: a.product.imageUrl,
+        priceInCents: a.product.priceInCents,
         quantity: a.product.quantity,
         minStock: a.product.minStock || 0,
         location: a.product.location,
@@ -1286,6 +1326,8 @@ export const dashboardService = {
         id: a.product.id,
         name: a.product.name,
         sku: a.product.sku,
+        imageUrl: a.product.imageUrl,
+        priceInCents: a.product.priceInCents,
         quantity: a.product.quantity,
         minStock: a.product.minStock || 0,
         location: a.product.location,
@@ -1300,6 +1342,8 @@ export const dashboardService = {
         id: a.product.id,
         name: a.product.name,
         sku: a.product.sku,
+        imageUrl: a.product.imageUrl,
+        priceInCents: a.product.priceInCents,
         quantity: a.product.quantity,
         expiryDate: a.product.expiryDate || new Date(),
         location: a.product.location,
@@ -1314,6 +1358,8 @@ export const dashboardService = {
         id: a.product.id,
         name: a.product.name,
         sku: a.product.sku,
+        imageUrl: a.product.imageUrl,
+        priceInCents: a.product.priceInCents,
         quantity: a.product.quantity,
         expiryDate: a.product.expiryDate || new Date(),
         location: a.product.location,
@@ -1375,6 +1421,8 @@ export const dashboardService = {
         active: number;
         name: string;
         sku: string | null;
+        imageUrl: string | null;
+        priceInCents: number | null;
       }
     >();
 
@@ -1394,6 +1442,8 @@ export const dashboardService = {
           active: a.isResolved ? 0 : 1,
           name: a.product.name,
           sku: a.product.sku,
+          imageUrl: a.product.imageUrl,
+          priceInCents: a.product.priceInCents,
         });
       }
     });
@@ -1403,6 +1453,8 @@ export const dashboardService = {
         productId,
         name: data.name,
         sku: data.sku,
+        imageUrl: data.imageUrl,
+        priceInCents: data.priceInCents,
         totalAlerts: data.total,
         resolvedAlerts: data.resolved,
         activeAlerts: data.active,
@@ -1483,6 +1535,8 @@ export const dashboardService = {
         productId: a.productId,
         productName: a.product.name,
         productSku: a.product.sku,
+        productImageUrl: a.product.imageUrl,
+        productPrice: a.product.priceInCents,
         alertType: a.alertType,
         message: a.message,
         isResolved: a.isResolved,

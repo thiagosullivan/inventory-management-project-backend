@@ -1,15 +1,17 @@
-import {
-  MovementStatus,
-  MovementType,
-  ProductCategory,
-} from "../generated/prisma/enums";
+import { MovementStatus, MovementType } from "../generated/prisma/enums";
+
+// 🔹 Tipo compartilhado da categoria aninhada
+export interface ProductCategoryRef {
+  id: string;
+  name: string;
+}
 
 // Dados para criar um produto
 export interface CreateProductData {
   name: string;
   sku?: string;
   description?: string;
-  category: ProductCategory;
+  categoryId: string; // 🔹 era: category: ProductCategory
   quantity?: number;
   minStock?: number;
   maxStock?: number;
@@ -24,7 +26,7 @@ export interface UpdateProductData {
   name?: string;
   sku?: string;
   description?: string;
-  category?: ProductCategory;
+  categoryId?: string; // 🔹 era: category?: ProductCategory
   quantity?: number;
   minStock?: number;
   maxStock?: number;
@@ -41,7 +43,8 @@ export interface ProductResponse {
   name: string;
   sku: string | null;
   description: string | null;
-  category: ProductCategory;
+  categoryId: string; // 🔹 era: category: ProductCategory
+  category?: ProductCategoryRef; // 🔹 relação (opcional, depende do include)
   quantity: number;
   minStock: number | null;
   maxStock: number | null;
@@ -77,11 +80,11 @@ export interface ProductsListResponse {
 // Filtros para listagem de produtos
 export interface ProductFilters {
   search?: string;
-  category?: ProductCategory;
+  categoryId?: string; // 🔹 era: category?: ProductCategory
   minQuantity?: number;
   maxQuantity?: number;
   hasExpiryDate?: boolean;
-  isExpiring?: boolean; // Produtos que vencem nos próximos 30 dias
+  isExpiring?: boolean;
   isLowStock?: boolean;
   createdById?: string;
   page?: number;
@@ -130,7 +133,8 @@ export interface StockSummary {
   outOfStockCount: number;
   expiringSoonCount: number;
   categories: {
-    category: ProductCategory;
+    categoryId: string; // 🔹 era: category: ProductCategory
+    categoryName: string; // 🔹 NOVO: nome pra exibir no dashboard
     count: number;
     items: number;
   }[];

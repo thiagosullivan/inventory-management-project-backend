@@ -35,7 +35,7 @@ export const productController = {
         });
       }
 
-      if (!data.category) {
+      if (!data.categoryId) {
         return res.status(400).json({
           success: false,
           message: "Categoria do produto é obrigatória",
@@ -85,10 +85,10 @@ export const productController = {
    */
   async listProducts(req: Request, res: Response) {
     try {
-      const userId = req.user?.id;
+      // const userId = req.user?.id;
       const filters: ProductFilters = {
         search: req.query.search as string,
-        category: req.query.category as any,
+        categoryId: req.query.categoryId as string,
         minQuantity: req.query.minQuantity
           ? Number(req.query.minQuantity)
           : undefined,
@@ -110,7 +110,7 @@ export const productController = {
         sortOrder: req.query.sortOrder as any,
       };
 
-      const result = await productService.listProducts(filters, userId);
+      const result = await productService.listProducts(filters);
 
       return res.status(200).json({
         success: true,
@@ -239,7 +239,7 @@ export const productController = {
         !data.name &&
         data.sku === undefined &&
         !data.description &&
-        !data.category &&
+        data.categoryId === undefined &&
         data.quantity === undefined &&
         data.minStock === undefined &&
         data.maxStock === undefined &&
