@@ -19,6 +19,8 @@ export interface BetterAuthUser {
   image: string | null | undefined;
   createdAt: Date;
   updatedAt: Date;
+  role: Role;
+  isActive: boolean;
 }
 
 // Resposta do Better Auth ao criar usuário (tipagem correta)
@@ -65,6 +67,7 @@ export interface AuthenticatedUser {
   name: string;
   role: Role;
   emailVerified: boolean;
+  isActive: boolean;
 }
 
 // Extensão do Request para incluir o usuário
