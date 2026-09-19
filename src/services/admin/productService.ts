@@ -205,6 +205,7 @@ export const productService = {
               email: true,
             },
           },
+          category: { select: { id: true, name: true } },
         },
         orderBy: { [sortBy]: sortOrder },
         skip,
