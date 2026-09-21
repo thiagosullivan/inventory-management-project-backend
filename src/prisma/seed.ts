@@ -1,11 +1,7 @@
 // prisma/seed.ts
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
-import {
-  PrismaClient,
-  ProductCategory,
-  Role,
-} from "../generated/prisma/client.js";
+import { PrismaClient, Role } from "../generated/prisma/client.js";
 import { auth } from "../lib/auth.js";
 
 const connectionString = `${process.env.DATABASE_URL}`;
@@ -19,7 +15,41 @@ async function main() {
   console.log("✅ Conectado ao NeonDB");
 
   // ============================================
-  // 1. CRIAR USUÁRIO MANAGER USANDO BETTER AUTH
+  // 1. CRIAR CATEGORIAS BASE (UPSERT IDEMPOTENTE)
+  // ============================================
+  console.log("\n📂 Criando categorias base...");
+
+  const categoryNames = [
+    "Almoxarifado",
+    "Alimentos",
+    "Limpeza",
+    "Escritório",
+    "Ferramentas",
+    "Equipamentos",
+    "Outros",
+  ];
+
+  const categoryMap = new Map<string, string>(); // name -> id
+
+  for (const name of categoryNames) {
+    const category = await prisma.customCategory.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    });
+    categoryMap.set(name, category.id);
+    console.log(`   ✅ ${name} (id: ${category.id})`);
+  }
+
+  // Helper pra pegar id ou explodir com erro claro
+  const catId = (name: string): string => {
+    const id = categoryMap.get(name);
+    if (!id) throw new Error(`Categoria não encontrada no map: ${name}`);
+    return id;
+  };
+
+  // ============================================
+  // 2. CRIAR USUÁRIO MANAGER USANDO BETTER AUTH
   // ============================================
   console.log("\n👤 Criando usuário MANAGER...");
 
@@ -30,7 +60,6 @@ async function main() {
 
   if (!admin) {
     try {
-      // ✅ Usar a API do Better Auth para criar o usuário
       const response = await auth.api.signUpEmail({
         body: {
           email: managerEmail,
@@ -43,12 +72,10 @@ async function main() {
 
       console.log("✅ Resposta do Better Auth:", response);
 
-      // Buscar o usuário criado
       admin = await prisma.user.findUnique({
         where: { email: managerEmail },
       });
 
-      // Atualizar para MANAGER
       if (admin) {
         admin = await prisma.user.update({
           where: { id: admin.id },
@@ -74,7 +101,7 @@ async function main() {
   }
 
   // ============================================
-  // 2. CRIAR USUÁRIO STAFF USANDO BETTER AUTH
+  // 3. CRIAR USUÁRIO STAFF USANDO BETTER AUTH
   // ============================================
   console.log("\n👤 Criando usuário STAFF...");
 
@@ -85,7 +112,6 @@ async function main() {
 
   if (!staff) {
     try {
-      // ✅ Usar a API do Better Auth para criar o staff
       await auth.api.signUpEmail({
         body: {
           email: staffEmail,
@@ -96,7 +122,6 @@ async function main() {
         },
       });
 
-      // Buscar e atualizar o staff
       staff = await prisma.user.findUnique({
         where: { email: staffEmail },
       });
@@ -126,7 +151,7 @@ async function main() {
   }
 
   // ============================================
-  // 3. BUSCAR O ADMIN ATUALIZADO
+  // 4. BUSCAR O ADMIN ATUALIZADO
   // ============================================
   admin = await prisma.user.findUnique({
     where: { email: managerEmail },
@@ -139,13 +164,13 @@ async function main() {
   console.log(`\n📦 Criando produtos para o admin: ${admin.id}`);
 
   // ============================================
-  // 4. CRIAR PRODUTOS
+  // 5. CRIAR PRODUTOS (REFERENCIANDO categoryId)
   // ============================================
   const products = [
     {
       name: "Caneta Esferográfica Azul",
       sku: "CAN-001",
-      category: ProductCategory.ESCRITORIO,
+      categoryName: "Escritório", // 🔹 nome humanizado
       quantity: 100,
       minStock: 20,
       location: "Prateleira A1",
@@ -155,7 +180,7 @@ async function main() {
     {
       name: "Arroz Integral 1kg",
       sku: "ALI-001",
-      category: ProductCategory.ALIMENTOS,
+      categoryName: "Alimentos",
       quantity: 50,
       minStock: 10,
       location: "Prateleira B2",
@@ -166,7 +191,7 @@ async function main() {
     {
       name: "Parafuso 3x20mm",
       sku: "FER-001",
-      category: ProductCategory.FERRAMENTAS,
+      categoryName: "Ferramentas",
       quantity: 500,
       minStock: 100,
       location: "Gaveta C3",
@@ -176,7 +201,7 @@ async function main() {
     {
       name: "Papel A4 75g",
       sku: "ESC-001",
-      category: ProductCategory.ESCRITORIO,
+      categoryName: "Escritório",
       quantity: 200,
       minStock: 50,
       location: "Prateleira D1",
@@ -186,7 +211,7 @@ async function main() {
     {
       name: "Detergente Líquido 500ml",
       sku: "LIM-001",
-      category: ProductCategory.LIMPEZA,
+      categoryName: "Limpeza",
       quantity: 80,
       minStock: 15,
       location: "Prateleira E2",
@@ -196,7 +221,7 @@ async function main() {
     {
       name: "Chave de Fenda 6mm",
       sku: "FER-002",
-      category: ProductCategory.FERRAMENTAS,
+      categoryName: "Ferramentas",
       quantity: 30,
       minStock: 10,
       location: "Gaveta C1",
@@ -206,7 +231,7 @@ async function main() {
     {
       name: 'Monitor 24" LED',
       sku: "EQU-001",
-      category: ProductCategory.EQUIPAMENTOS,
+      categoryName: "Equipamentos",
       quantity: 5,
       minStock: 2,
       location: "Sala de TI",
@@ -216,7 +241,7 @@ async function main() {
     {
       name: "Caixa de Lápis de Cor 12 Cores",
       sku: "ESC-002",
-      category: ProductCategory.ESCRITORIO,
+      categoryName: "Escritório",
       quantity: 60,
       minStock: 15,
       location: "Prateleira A3",
@@ -226,7 +251,7 @@ async function main() {
     {
       name: "Água Sanitária 1L",
       sku: "LIM-002",
-      category: ProductCategory.LIMPEZA,
+      categoryName: "Limpeza",
       quantity: 40,
       minStock: 10,
       location: "Prateleira E1",
@@ -237,7 +262,7 @@ async function main() {
     {
       name: "Parafuso 4x40mm",
       sku: "FER-003",
-      category: ProductCategory.FERRAMENTAS,
+      categoryName: "Ferramentas",
       quantity: 800,
       minStock: 150,
       location: "Gaveta C4",
@@ -259,7 +284,7 @@ async function main() {
           createdById: admin.id,
           name: productData.name,
           sku: productData.sku,
-          category: productData.category,
+          categoryId: catId(productData.categoryName), // 🔹 FK
           quantity: productData.quantity,
           minStock: productData.minStock,
           location: productData.location,
@@ -280,9 +305,10 @@ async function main() {
   }
 
   // ============================================
-  // 5. RESUMO FINAL
+  // 6. RESUMO FINAL
   // ============================================
   console.log("\n📊 ===== RESUMO ===== ");
+  console.log(`📂 Categorias: ${categoryNames.length}`);
   console.log(`👤 Usuários:`);
   console.log(`   - MANAGER: admin@estoque.com / Admin@123`);
   console.log(`   - STAFF: funcionario@estoque.com / Staff@123`);
