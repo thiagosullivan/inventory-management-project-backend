@@ -9,7 +9,13 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // Middlewares
-app.use(cors());
+app.use(
+  cors({
+    origin: "http://localhost:5173", // URL do Vite (não pode ser "*")
+    credentials: true, // 👈 Permite cookies
+    allowedHeaders: ["Authorization", "Content-Type"],
+  }),
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
