@@ -114,12 +114,26 @@ export const productService = {
     const where: any = {};
 
     // Busca por nome ou SKU
+    // if (filters?.search) {
+    //   where.OR = [
+    //     { name: { contains: filters.search, mode: "insensitive" } },
+    //     { sku: { contains: filters.search, mode: "insensitive" } },
+    //     { description: { contains: filters.search, mode: "insensitive" } },
+    //   ];
+    // }
+
     if (filters?.search) {
-      where.OR = [
-        { name: { contains: filters.search, mode: "insensitive" } },
-        { sku: { contains: filters.search, mode: "insensitive" } },
-        { description: { contains: filters.search, mode: "insensitive" } },
-      ];
+      const rows = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "Product"
+      WHERE unaccent(name) ILIKE unaccent(${`%${filters.search}%`})
+         OR unaccent(coalesce(sku, '')) ILIKE unaccent(${`%${filters.search}%`})
+         OR unaccent(coalesce(description, '')) ILIKE unaccent(${`%${filters.search}%`})
+    `;
+
+      const searchIds = rows.map((r) => r.id);
+
+      // Se nada casou, força resultado vazio (evita cair no where sem filtro)
+      where.id = { in: searchIds.length > 0 ? searchIds : ["__none__"] };
     }
 
     // Filtro por categoria
