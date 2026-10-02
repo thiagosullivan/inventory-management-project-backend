@@ -5,6 +5,7 @@ import {
   BetterAuthUserResponse,
   CreateStaffUserData,
   UserFilters,
+  UserOption,
   UserResponse,
   UsersListResponse,
 } from "../../types/user.types.js";
@@ -290,5 +291,36 @@ export const userService = {
     });
 
     return deletedUser;
+  },
+
+  /**
+   * List user options for dropdowns/selects.
+   * GET /admin/users/options (STAFF + MANAGER)
+   *
+   * Regras:
+   * - Só retorna usuários que criaram pelo menos um produto
+   *   (são os únicos relevantes pro filtro `createdById`).
+   * - Inclui usuários desativados (eles ainda têm produtos no estoque).
+   * - Shape enxuto: { label: name ?? email, value: id, isActive }.
+   */
+  async getUserOptions(): Promise<UserOption[]> {
+    const users = await prisma.user.findMany({
+      where: {
+        createdProducts: { some: {} }, // 🔹 só quem criou pelo menos 1 produto
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        isActive: true,
+      },
+      orderBy: { name: "asc" },
+    });
+
+    return users.map((u) => ({
+      label: u.name ?? u.email, // name é nullable — fallback pro email
+      value: u.id,
+      isActive: u.isActive,
+    }));
   },
 };

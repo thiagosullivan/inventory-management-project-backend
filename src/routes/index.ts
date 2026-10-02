@@ -1,15 +1,19 @@
 import express from "express";
 import authRouter from "./auth/auth";
-import adminRouter from "./admin/adminRoutes";
+import adminRouter from "./admin/userRoutes";
 import categoryRouter from "./admin/categoryRoutes.js";
 import productRouter from "./admin/productRoutes.js";
 import dashboardRouter from "./admin/dashboardRoutes.js";
 import exportRouter from "./admin/exportRoutes.js";
+import userOptionsRouter from "./admin/userOptionsRoutes";
 
 const router = express.Router();
 
 // Authentication routes
 router.use("/auth", authRouter);
+
+//    Senão o adminRouter captura /admin/users/options e bloqueia STAFF.
+router.use("/admin/users/options", userOptionsRouter);
 
 // Admin routes
 router.use("/admin/users", adminRouter);
