@@ -138,7 +138,7 @@ export const productService = {
 
     // Filtro por categoria
     if (filters?.categoryId) {
-      where.category = filters.categoryId;
+      where.categoryId = filters.categoryId;
     }
 
     // Filtro por quantidade
