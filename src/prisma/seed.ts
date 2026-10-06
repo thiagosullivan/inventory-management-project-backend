@@ -15,42 +15,9 @@ async function main() {
   console.log("✅ Conectado ao NeonDB");
 
   // ============================================
-  // 1. CRIAR CATEGORIAS BASE (UPSERT IDEMPOTENTE)
+  // 1. CRIAR USUÁRIO MANAGER USANDO BETTER AUTH
   // ============================================
-  console.log("\n📂 Criando categorias base...");
-
-  const categoryNames = [
-    "Almoxarifado",
-    "Alimentos",
-    "Limpeza",
-    "Escritório",
-    "Ferramentas",
-    "Equipamentos",
-    "Outros",
-  ];
-
-  const categoryMap = new Map<string, string>(); // name -> id
-
-  for (const name of categoryNames) {
-    const category = await prisma.customCategory.upsert({
-      where: { name },
-      update: {},
-      create: { name },
-    });
-    categoryMap.set(name, category.id);
-    console.log(`   ✅ ${name} (id: ${category.id})`);
-  }
-
-  // Helper pra pegar id ou explodir com erro claro
-  const catId = (name: string): string => {
-    const id = categoryMap.get(name);
-    if (!id) throw new Error(`Categoria não encontrada no map: ${name}`);
-    return id;
-  };
-
-  // ============================================
-  // 2. CRIAR USUÁRIO MANAGER USANDO BETTER AUTH
-  // ============================================
+  // 🔹 Movido pra primeiro — categorias precisam do admin.id
   console.log("\n👤 Criando usuário MANAGER...");
 
   const managerEmail = "admin@estoque.com";
@@ -100,8 +67,12 @@ async function main() {
     console.log(`   ID: ${admin.id}`);
   }
 
+  if (!admin) {
+    throw new Error("Admin não encontrado após criação!");
+  }
+
   // ============================================
-  // 3. CRIAR USUÁRIO STAFF USANDO BETTER AUTH
+  // 2. CRIAR USUÁRIO STAFF USANDO BETTER AUTH
   // ============================================
   console.log("\n👤 Criando usuário STAFF...");
 
@@ -151,31 +122,60 @@ async function main() {
   }
 
   // ============================================
-  // 4. BUSCAR O ADMIN ATUALIZADO
+  // 3. CRIAR CATEGORIAS BASE (AGORA COM createdById)
   // ============================================
-  admin = await prisma.user.findUnique({
-    where: { email: managerEmail },
-  });
+  // 🔹 Movido pra depois do MANAGER — precisa do admin.id como dono
+  console.log("\n📂 Criando categorias base...");
 
-  if (!admin) {
-    throw new Error("Admin não encontrado após criação!");
+  const categoryNames = [
+    "Almoxarifado",
+    "Alimentos",
+    "Limpeza",
+    "Escritório",
+    "Ferramentas",
+    "Equipamentos",
+    "Outros",
+  ];
+
+  const categoryMap = new Map<string, string>(); // name -> id
+
+  for (const name of categoryNames) {
+    const category = await prisma.customCategory.upsert({
+      where: { name },
+      update: {}, // 🔹 se já existe, não mexe (preserva createdById original)
+      create: {
+        name,
+        createdById: admin.id, // 🔹 dono = MANAGER do seed
+      },
+    });
+    categoryMap.set(name, category.id);
+    console.log(`   ✅ ${name} (id: ${category.id})`);
   }
+
+  // Helper pra pegar id ou explodir com erro claro
+  const catId = (name: string): string => {
+    const id = categoryMap.get(name);
+    if (!id) throw new Error(`Categoria não encontrada no map: ${name}`);
+    return id;
+  };
 
   console.log(`\n📦 Criando produtos para o admin: ${admin.id}`);
 
   // ============================================
-  // 5. CRIAR PRODUTOS (REFERENCIANDO categoryId)
+  // 4. CRIAR PRODUTOS (REFERENCIANDO categoryId)
   // ============================================
   const products = [
     {
       name: "Caneta Esferográfica Azul",
       sku: "CAN-001",
-      categoryName: "Escritório", // 🔹 nome humanizado
+      categoryName: "Escritório",
       quantity: 100,
       minStock: 20,
       location: "Prateleira A1",
       supplier: "Fornecedor A",
       description: "Caneta esferográfica azul, ponta média",
+      imageUrl:
+        "https://cdn.iset.io/assets/50203/produtos/2149/caneta-esferogr-fica-1.0mm-cristal-azul-bic.jpg",
     },
     {
       name: "Arroz Integral 1kg",
@@ -187,6 +187,8 @@ async function main() {
       supplier: "Distribuidora Alimentos",
       description: "Arroz integral tipo 1, pacote 1kg",
       expiryDate: new Date("2025-12-31"),
+      imageUrl:
+        "https://mambodelivery.vtexassets.com/arquivos/ids/156847/arroz-integral-parboilizado-tio-joao-1kg.jpg",
     },
     {
       name: "Parafuso 3x20mm",
@@ -197,6 +199,8 @@ async function main() {
       location: "Gaveta C3",
       supplier: "Loja de Ferragens",
       description: "Parafuso para madeira 3x20mm, caixa com 1000 unidades",
+      imageUrl:
+        "https://cdn.leroymerlin.com.br/products/parafuso_aco_para_madeira_3x20mm_auto_atarraxante_20_pecas_86938285_a671_1800x1800.jpg",
     },
     {
       name: "Papel A4 75g",
@@ -207,6 +211,7 @@ async function main() {
       location: "Prateleira D1",
       supplier: "Papelaria Central",
       description: "Papel A4 75g, pacote com 500 folhas",
+      imageUrl: "https://img.kalunga.com.br/fotosdeprodutos/476102z.jpg",
     },
     {
       name: "Detergente Líquido 500ml",
@@ -217,6 +222,8 @@ async function main() {
       location: "Prateleira E2",
       supplier: "Distribuidora de Limpeza",
       description: "Detergente líquido neutro 500ml",
+      imageUrl:
+        "https://beagaembalagem.com.br/wp-content/uploads/2014/09/detergente-ype-500-ml.jpg",
     },
     {
       name: "Chave de Fenda 6mm",
@@ -227,6 +234,8 @@ async function main() {
       location: "Gaveta C1",
       supplier: "Loja de Ferragens",
       description: "Chave de fenda 6mm, cabo de plástico",
+      imageUrl:
+        "https://palaciodasferramentas.com.br/media/catalog/product/W/T/WTEGEWNNUCYYVMMHVKLE.jpg",
     },
     {
       name: 'Monitor 24" LED',
@@ -237,6 +246,8 @@ async function main() {
       location: "Sala de TI",
       supplier: "Distribuidora de Informática",
       description: "Monitor LED 24 polegadas, Full HD",
+      imageUrl:
+        "https://cdn.awsli.com.br/2500x2500/954/954868/produto/310843687/20wr-75hz--4--qclw8gttpz.png",
     },
     {
       name: "Caixa de Lápis de Cor 12 Cores",
@@ -247,6 +258,7 @@ async function main() {
       location: "Prateleira A3",
       supplier: "Papelaria Central",
       description: "Caixa com 12 lápis de cor",
+      imageUrl: "https://s3.amazonaws.com/lepok.w/produtos/produtos/00965.webp",
     },
     {
       name: "Água Sanitária 1L",
@@ -257,6 +269,8 @@ async function main() {
       location: "Prateleira E1",
       supplier: "Distribuidora de Limpeza",
       description: "Água sanitária 1L, hipoclorito de sódio 2,5%",
+      imageUrl:
+        "https://destro.fbitsstatic.net/img/p/agua-sanitaria-qboa-1l-70227/256763.jpg?w=500&h=500&v=202501231555&qs=ignore",
       expiryDate: new Date("2025-06-30"),
     },
     {
@@ -268,6 +282,8 @@ async function main() {
       location: "Gaveta C4",
       supplier: "Loja de Ferragens",
       description: "Parafuso para madeira 4x40mm, caixa com 500 unidades",
+      imageUrl:
+        "https://cdn.ferramentaskennedy.com.br/storage/kennedy/510/parafuso-para-madeira-chipboard-4x40mm-com-500-pec-ciser17805873591791930.avif",
     },
   ];
 
@@ -284,7 +300,7 @@ async function main() {
           createdById: admin.id,
           name: productData.name,
           sku: productData.sku,
-          categoryId: catId(productData.categoryName), // 🔹 FK
+          categoryId: catId(productData.categoryName),
           quantity: productData.quantity,
           minStock: productData.minStock,
           location: productData.location,
@@ -305,7 +321,7 @@ async function main() {
   }
 
   // ============================================
-  // 6. RESUMO FINAL
+  // 5. RESUMO FINAL
   // ============================================
   console.log("\n📊 ===== RESUMO ===== ");
   console.log(`📂 Categorias: ${categoryNames.length}`);
