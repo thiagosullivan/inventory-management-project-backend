@@ -12,25 +12,59 @@ import {
 } from "../../utils/validation.js";
 import { Role } from "../../generated/prisma/enums.js";
 
+/**
+ * 🔹 Checa se o usuário pode modificar (editar/deletar) uma categoria.
+ * Regra (Modelo 3): MANAGER pode tudo; STAFF só as que ele criou.
+ * Lança erro se não puder.
+ */
+async function ensureCanModifyCategory(
+  categoryId: string,
+  userId: string,
+  action: "editar" | "deletar",
+): Promise<{ id: string; createdById: string; _count: { products: number } }> {
+  const category = await prisma.customCategory.findUnique({
+    where: { id: categoryId },
+    select: {
+      id: true,
+      createdById: true,
+      _count: { select: { products: true } },
+    },
+  });
+
+  if (!category) {
+    throw new Error("Categoria não encontrada");
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+
+  const isManager = user?.role === Role.MANAGER;
+  const isCreator = category.createdById === userId;
+
+  if (!isManager && !isCreator) {
+    throw new Error(
+      `Apenas o criador da categoria ou um MANAGER podem ${action}-la`,
+    );
+  }
+
+  return category;
+}
+
 export const categoryService = {
-  // Create category (only MANAGER)
+  // Create category (STAFF + MANAGER)
   async createCategory(
     data: CreateCategoryData,
-    adminId: string,
+    userId: string,
   ): Promise<CategoryResponse> {
     const validation = validateCategoryData(data);
     if (!validation.isValid) {
       throw new Error(`Dados inválidos: ${validation.errors.join(", ")}`);
     }
 
-    const admin = await prisma.user.findUnique({
-      where: { id: adminId },
-      select: { role: true },
-    });
-
-    if (!admin || admin.role !== Role.MANAGER) {
-      throw new Error("Apenas gerentes podem criar categorias");
-    }
+    // 🔹 Não checa mais role — qualquer autenticado cria
+    // (a permissão é garantida pelo middleware isStaff na rota)
 
     const nameExists = await categoryNameExists(prisma, data.name);
     if (nameExists) {
@@ -41,6 +75,7 @@ export const categoryService = {
       data: {
         name: data.name.trim(),
         description: data.description?.trim() || null,
+        createdById: userId, // 🔹 dono da categoria
       },
     });
 
@@ -101,28 +136,14 @@ export const categoryService = {
     return category;
   },
 
-  // Update category (only MANAGER)
+  // Update category (STAFF + MANAGER, mas STAFF só as próprias)
   async updateCategory(
     categoryId: string,
     data: UpdateCategoryData,
-    adminId: string,
+    userId: string,
   ): Promise<CategoryResponse> {
-    const admin = await prisma.user.findUnique({
-      where: { id: adminId },
-      select: { role: true },
-    });
-
-    if (!admin || admin.role !== Role.MANAGER) {
-      throw new Error("Apenas gerentes podem atualizar categorias");
-    }
-
-    const existingCategory = await prisma.customCategory.findUnique({
-      where: { id: categoryId },
-    });
-
-    if (!existingCategory) {
-      throw new Error("Categoria não encontrada");
-    }
+    // 🔹 Checagem de permissão (Modelo 3)
+    await ensureCanModifyCategory(categoryId, userId, "editar");
 
     if (data.name) {
       const validation = validateCategoryData({
@@ -154,29 +175,21 @@ export const categoryService = {
     return updatedCategory;
   },
 
-  // Delete category (only MANAGER)
-  async deleteCategory(categoryId: string, adminId: string): Promise<void> {
-    const admin = await prisma.user.findUnique({
-      where: { id: adminId },
-      select: { role: true },
-    });
+  // Delete category (STAFF + MANAGER, mas STAFF só as próprias)
+  async deleteCategory(categoryId: string, userId: string): Promise<void> {
+    // 🔹 Checagem de permissão + já traz _count.products
+    const category = await ensureCanModifyCategory(
+      categoryId,
+      userId,
+      "deletar",
+    );
 
-    if (!admin || admin.role !== Role.MANAGER) {
-      throw new Error("Apenas gerentes podem deletar categorias");
+    // 🔹 Checa produtos vinculados ANTES de deletar
+    if (category._count.products > 0) {
+      throw new Error(
+        `Categoria em uso por ${category._count.products} produto(s). Não pode ser deletada.`,
+      );
     }
-
-    const existingCategory = await prisma.customCategory.findUnique({
-      where: { id: categoryId },
-    });
-
-    if (!existingCategory) {
-      throw new Error("Categoria não encontrada");
-    }
-
-    // 3. Verificar se a categoria está sendo usada por algum produto
-    // Nota: Como você tem enum ProductCategory, as categorias personalizadas
-    // podem ser usadas de forma diferente. Este é um check de segurança.
-    // Se você relacionar CustomCategory com Product, adicione a verificação aqui.
 
     await prisma.customCategory.delete({
       where: { id: categoryId },

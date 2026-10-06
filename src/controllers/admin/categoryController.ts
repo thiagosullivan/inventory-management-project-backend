@@ -8,13 +8,13 @@ import {
 
 export const categoryController = {
   /**
-   * Create category (only MANAGER)
+   * Create category (STAFF + MANAGER)
    * POST /api/admin/categories
    */
   async createCategory(req: Request, res: Response) {
     try {
-      const adminId = req.user?.id;
-      if (!adminId) {
+      const userId = req.user?.id;
+      if (!userId) {
         return res.status(401).json({
           success: false,
           message: "Usuário não autenticado",
@@ -32,7 +32,7 @@ export const categoryController = {
         });
       }
 
-      const category = await categoryService.createCategory(data, adminId);
+      const category = await categoryService.createCategory(data, userId);
 
       return res.status(201).json({
         success: true,
@@ -138,13 +138,13 @@ export const categoryController = {
   },
 
   /**
-   * Update category (only MANAGER)
+   * Update category (STAFF + MANAGER, mas STAFF só as próprias)
    * PATCH /api/admin/categories/:id
    */
   async updateCategory(req: Request, res: Response) {
     try {
-      const adminId = req.user?.id;
-      if (!adminId) {
+      const userId = req.user?.id;
+      if (!userId) {
         return res.status(401).json({
           success: false,
           message: "Usuário não autenticado",
@@ -176,7 +176,7 @@ export const categoryController = {
       const category = await categoryService.updateCategory(
         categoryId,
         data,
-        adminId,
+        userId,
       );
 
       return res.status(200).json({
@@ -192,6 +192,15 @@ export const categoryController = {
           success: false,
           message: error.message,
           code: "CATEGORY_NOT_FOUND",
+        });
+      }
+
+      // 🔹 NOVO: permissão negada (Modelo 3)
+      if (error.message.includes("Apenas o criador")) {
+        return res.status(403).json({
+          success: false,
+          message: error.message,
+          code: "FORBIDDEN",
         });
       }
 
@@ -222,13 +231,13 @@ export const categoryController = {
   },
 
   /**
-   * Delete category (only MANAGER)
+   * Delete category (STAFF + MANAGER, mas STAFF só as próprias)
    * DELETE /api/admin/categories/:id
    */
   async deleteCategory(req: Request, res: Response) {
     try {
-      const adminId = req.user?.id;
-      if (!adminId) {
+      const userId = req.user?.id;
+      if (!userId) {
         return res.status(401).json({
           success: false,
           message: "Usuário não autenticado",
@@ -247,7 +256,7 @@ export const categoryController = {
         });
       }
 
-      await categoryService.deleteCategory(categoryId, adminId);
+      await categoryService.deleteCategory(categoryId, userId);
 
       return res.status(200).json({
         success: true,
@@ -261,6 +270,24 @@ export const categoryController = {
           success: false,
           message: error.message,
           code: "CATEGORY_NOT_FOUND",
+        });
+      }
+
+      // 🔹 NOVO: permissão negada (Modelo 3)
+      if (error.message.includes("Apenas o criador")) {
+        return res.status(403).json({
+          success: false,
+          message: error.message,
+          code: "FORBIDDEN",
+        });
+      }
+
+      // 🔹 NOVO: categoria em uso por produtos
+      if (error.message.includes("em uso por")) {
+        return res.status(409).json({
+          success: false,
+          message: error.message,
+          code: "CATEGORY_IN_USE",
         });
       }
 

@@ -16,9 +16,10 @@ router.get(
 );
 router.get("/categories/:id", isStaff, categoryController.getCategoryById);
 
-// 📌 Routes for MANAGER (write)
-router.post("/categories", isManager, categoryController.createCategory);
-router.patch("/categories/:id", isManager, categoryController.updateCategory);
-router.delete("/categories/:id", isManager, categoryController.deleteCategory);
+// 📌 Routes for STAFF and MANAGER (write — permissão checada no service)
+// 🔹 Modelo 3: STAFF cria/edita/deleta apenas as próprias; MANAGER todas
+router.post("/categories", isStaff, categoryController.createCategory);
+router.patch("/categories/:id", isStaff, categoryController.updateCategory);
+router.delete("/categories/:id", isStaff, categoryController.deleteCategory);
 
 export default router;
