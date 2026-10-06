@@ -65,6 +65,7 @@ export const productService = {
         sku: data.sku?.trim() || null,
         description: data.description?.trim() || null,
         categoryId: data.categoryId,
+        imageUrl: data.imageUrl?.trim() || null,
         quantity: data.quantity || 0,
         minStock: data.minStock || 5,
         maxStock: data.maxStock || null,
@@ -381,6 +382,7 @@ export const productService = {
       name: data.name?.trim(),
       sku: data.sku?.trim() || null,
       description: data.description?.trim() || null,
+      imageUrl: data.imageUrl?.trim() || null,
       categoryId: data.categoryId, // 🔹 era: category
       minStock: data.minStock,
       maxStock: data.maxStock,

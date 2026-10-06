@@ -11,7 +11,8 @@ export interface CreateProductData {
   name: string;
   sku?: string;
   description?: string;
-  categoryId: string; // 🔹 era: category: ProductCategory
+  categoryId: string;
+  imageUrl?: string;
   quantity?: number;
   minStock?: number;
   maxStock?: number;
@@ -26,7 +27,8 @@ export interface UpdateProductData {
   name?: string;
   sku?: string;
   description?: string;
-  categoryId?: string; // 🔹 era: category?: ProductCategory
+  categoryId?: string;
+  imageUrl?: string;
   quantity?: number;
   minStock?: number;
   maxStock?: number;
