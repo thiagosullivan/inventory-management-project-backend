@@ -46,10 +46,11 @@ model User {
   sessions      Session[]
   verifications Verification[]
 
-  createdProducts Product[]      @relation("CreatedBy")
-  updatedProducts Product[]      @relation("UpdatedBy")
-  movements       Movement[]     @relation("CreatedBy")
-  stockHistory    StockHistory[]
+  createdProducts   Product[]        @relation("CreatedBy")
+  updatedProducts   Product[]        @relation("UpdatedBy")
+  createdCategories CustomCategory[] @relation("CategoryCreatedBy")
+  movements         Movement[]       @relation("CreatedBy")
+  stockHistory      StockHistory[]
 
   @@index([email])
   @@index([role])
@@ -214,6 +215,8 @@ model CustomCategory {
   id          String   @id @default(cuid())
   name        String   @unique(map: "customcategory_name_key")
   description String?
+  createdById String // 🔹 NOVO
+  createdBy   User     @relation("CategoryCreatedBy", fields: [createdById], references: [id], onDelete: Restrict) // 🔹 NOVO
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
