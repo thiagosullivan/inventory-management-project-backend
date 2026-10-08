@@ -82,12 +82,13 @@ export interface ProductsListResponse {
 // Filtros para listagem de produtos
 export interface ProductFilters {
   search?: string;
-  categoryId?: string; // 🔹 era: category?: ProductCategory
+  categoryId?: string;
   minQuantity?: number;
   maxQuantity?: number;
   hasExpiryDate?: boolean;
   isExpiring?: boolean;
   isLowStock?: boolean;
+  isExpired?: boolean;
   createdById?: string;
   page?: number;
   limit?: number;

@@ -103,6 +103,7 @@ export const productController = {
               : undefined,
         isExpiring: req.query.isExpiring === "true",
         isLowStock: req.query.isLowStock === "true",
+        isExpired: req.query.isExpired === "true",
         createdById: req.query.createdById as string,
         page: req.query.page ? Number(req.query.page) : undefined,
         limit: req.query.limit ? Number(req.query.limit) : undefined,

@@ -168,6 +168,12 @@ export const productService = {
       };
     }
 
+    // Filtro para produtos vencidos (expiryDate < now)
+    if (filters?.isExpired) {
+      const now = new Date();
+      where.expiryDate = { lt: now };
+    }
+
     // Filtro para estoque baixo
     if (filters?.isLowStock) {
       where.AND = [
