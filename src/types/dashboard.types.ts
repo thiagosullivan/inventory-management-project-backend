@@ -56,6 +56,19 @@ export interface DashboardOverviewFilters {
 
 // /dashboard/stock
 
+export interface StockAlertProduct {
+  id: string;
+  name: string;
+  sku: string | null;
+  imageUrl: string | null;
+  priceInCents: number | null;
+  quantity: number;
+  minStock: number | null;
+  expiryDate: Date | null;
+  location: string | null;
+  supplier: string | null;
+}
+
 export interface StockMetricsResponse {
   summary: {
     totalProducts: number;
@@ -96,48 +109,21 @@ export interface StockMetricsResponse {
     }[];
   };
   details: {
-    productsWithLowStock: {
-      id: string;
-      name: string;
-      sku: string | null;
-      imageUrl: string | null;
-      priceInCents: number | null;
-      quantity: number;
-      minStock: number | null;
-      location: string | null;
-      supplier: string | null;
-      expiryDate: Date | null;
-    }[];
-    productsExpiringSoon: {
-      id: string;
-      name: string;
-      sku: string | null;
-      imageUrl: string | null;
-      priceInCents: number | null;
-      quantity: number;
-      expiryDate: Date;
-      location: string | null;
-      supplier: string | null;
-    }[];
-    productsOutOfStock: {
-      id: string;
-      name: string;
-      sku: string | null;
-      imageUrl: string | null;
-      priceInCents: number | null;
-      location: string | null;
-      supplier: string | null;
-    }[];
+    productsWithLowStock: StockAlertProduct[];
+    productsExpiringSoon: StockAlertProduct[];
+    productsExpired: StockAlertProduct[];
+    productsOutOfStock: StockAlertProduct[];
   };
 }
 
 export interface StockMetricsFilters {
-  limit?: number; // Para listagens detalhadas (padrão: 10)
-  categoryId?: string; // Filtrar por categoria
-  location?: string; // Filtrar por localização
-  supplier?: string; // Filtrar por fornecedor
+  categoryId?: string;
+  location?: string;
+  locationExact?: boolean;
+  supplier?: string;
+  supplierExact?: boolean;
+  limit?: number;
 }
-
 // /dashboard/activity
 export interface ActivityMetricsResponse {
   summary: {

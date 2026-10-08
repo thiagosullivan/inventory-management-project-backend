@@ -18,6 +18,9 @@ export interface CategoryResponse {
   id: string;
   name: string;
   description: string | null;
+  createdById: string;
+  createdBy?: { id: string; name: string | null };
+  _count?: { products: number };
   createdAt: Date;
   updatedAt: Date;
 }
