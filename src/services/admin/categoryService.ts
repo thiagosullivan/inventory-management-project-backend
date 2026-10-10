@@ -102,6 +102,10 @@ export const categoryService = {
     const [categories, total] = await Promise.all([
       prisma.customCategory.findMany({
         where,
+        include: {
+          createdBy: { select: { id: true, name: true } },
+          _count: { select: { products: true } },
+        },
         orderBy: { name: "asc" },
         skip,
         take: limit,
