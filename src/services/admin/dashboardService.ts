@@ -319,12 +319,16 @@ export const dashboardService = {
         priceInCents: true,
       },
       where: {
-        ...(filters?.categoryId && { categoryId: filters.categoryId }), // 🔹 ajustado
+        ...(filters?.categoryId && { categoryId: filters.categoryId }),
         ...(filters?.location && {
-          location: { contains: filters.location, mode: "insensitive" },
+          location: filters.locationExact
+            ? { equals: filters.location, mode: "insensitive" }
+            : { contains: filters.location, mode: "insensitive" },
         }),
         ...(filters?.supplier && {
-          supplier: { contains: filters.supplier, mode: "insensitive" },
+          supplier: filters.supplierExact
+            ? { equals: filters.supplier, mode: "insensitive" }
+            : { contains: filters.supplier, mode: "insensitive" },
         }),
       },
     });
@@ -474,13 +478,13 @@ export const dashboardService = {
         id: p.id,
         name: p.name,
         sku: p.sku,
-        imageUrl: p.imageUrl, // 🔹 era p.id
+        imageUrl: p.imageUrl,
         priceInCents: p.priceInCents,
         quantity: p.quantity,
         minStock: p.minStock,
+        expiryDate: p.expiryDate,
         location: p.location,
         supplier: p.supplier,
-        expiryDate: p.expiryDate,
       }))
       .sort(
         (a, b) =>
@@ -498,9 +502,10 @@ export const dashboardService = {
         id: p.id,
         name: p.name,
         sku: p.sku,
-        imageUrl: p.imageUrl, // 🔹 era p.id
+        imageUrl: p.imageUrl,
         priceInCents: p.priceInCents,
         quantity: p.quantity,
+        minStock: null,
         expiryDate: p.expiryDate!,
         location: p.location,
         supplier: p.supplier,
@@ -517,11 +522,38 @@ export const dashboardService = {
         id: p.id,
         name: p.name,
         sku: p.sku,
-        imageUrl: p.imageUrl, // 🔹 era p.id
+        imageUrl: p.imageUrl,
         priceInCents: p.priceInCents,
+        quantity: 0,
+        minStock: p.minStock,
+        expiryDate: null,
         location: p.location,
         supplier: p.supplier,
       }))
+      .slice(0, limit);
+
+    const productsExpired = products
+      .filter((p) => {
+        if (!p.expiryDate) return false;
+        const expiryDate = new Date(p.expiryDate);
+        return expiryDate < now;
+      })
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        sku: p.sku,
+        imageUrl: p.imageUrl,
+        priceInCents: p.priceInCents,
+        quantity: p.quantity,
+        minStock: null,
+        expiryDate: p.expiryDate!,
+        location: p.location,
+        supplier: p.supplier,
+      }))
+      .sort(
+        (a, b) =>
+          new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime(),
+      )
       .slice(0, limit);
 
     // ===== 6. RESPOSTA =====
@@ -554,6 +586,7 @@ export const dashboardService = {
       details: {
         productsWithLowStock,
         productsExpiringSoon,
+        productsExpired,
         productsOutOfStock,
       },
     };
@@ -1258,11 +1291,16 @@ export const dashboardService = {
     let totalResolutionTime = 0;
     let resolvedWithTime = 0;
     alerts.forEach((a) => {
-      if (a.isResolved && a.resolvedAt) {
-        const diffInHours =
-          (a.resolvedAt.getTime() - a.createdAt.getTime()) / (1000 * 60 * 60);
-        totalResolutionTime += diffInHours;
-        resolvedWithTime++;
+      if (!a.product.category) return;
+      const existing = categoryAlertMap.get(a.product.category.id);
+      if (existing) {
+        if (a.alertType === "LOW_STOCK") {
+          existing.lowStock++;
+        } else if (a.alertType === "EXPIRING_SOON") {
+          existing.expiringSoon++;
+        } else if (a.alertType === "EXPIRED") {
+          existing.expired++;
+        }
       }
     });
     const averageResolutionTimeHours =
@@ -1471,29 +1509,25 @@ export const dashboardService = {
       { lowStock: number; expiringSoon: number; expired: number }
     >();
 
-    // Inicializar com todas as categorias
-    const allCategories = new Set(products.map((p) => p.category || "OUTROS"));
-    allCategories.forEach((cat) => {
-      categoryAlertMap.set(cat, { lowStock: 0, expiringSoon: 0, expired: 0 });
-    });
-
-    alerts.forEach((a) => {
-      const category = a.product.category || "OUTROS";
-      const existing = categoryAlertMap.get(category);
-      if (existing) {
-        if (a.alertType === "LOW_STOCK") {
-          existing.lowStock++;
-        } else if (a.alertType === "EXPIRING_SOON") {
-          existing.expiringSoon++;
-        } else if (a.alertType === "EXPIRED") {
-          existing.expired++;
-        }
+    // 🔹 Inicializar com todas as categorias (id → name)
+    const allCategories = new Map<string, string>();
+    products.forEach((p) => {
+      if (p.category) {
+        allCategories.set(p.category.id, p.category.name);
       }
+    });
+    allCategories.forEach((_name, categoryId) => {
+      categoryAlertMap.set(categoryId, {
+        lowStock: 0,
+        expiringSoon: 0,
+        expired: 0,
+      });
     });
 
     const byCategory = Array.from(categoryAlertMap.entries())
-      .map(([category, data]) => ({
-        category,
+      .map(([categoryId, data]) => ({
+        categoryId,
+        categoryName: allCategories.get(categoryId) ?? "—",
         alertCount: data.lowStock + data.expiringSoon + data.expired,
         lowStock: data.lowStock,
         expiringSoon: data.expiringSoon,
