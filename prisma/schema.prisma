@@ -214,11 +214,26 @@ model StockAlert {
 model CustomCategory {
   id          String   @id @default(cuid())
   name        String   @unique(map: "customcategory_name_key")
+  prefix      String   @unique(map: "customcategory_prefix_key")
   description String?
-  createdById String // 🔹 NOVO
-  createdBy   User     @relation("CategoryCreatedBy", fields: [createdById], references: [id], onDelete: Restrict) // 🔹 NOVO
+  createdById String
+  createdBy   User     @relation("CategoryCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   products Product[]
+  counter  CategoryCounter?
+}
+
+model CategoryCounter {
+  categoryId String         @id
+  category   CustomCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  lastNumber Int            @default(0)
+  updatedAt  DateTime       @updatedAt
+}
+
+model ProductCounter {
+  id         String   @id @default("singleton")
+  lastNumber Int      @default(1000000)
+  updatedAt  DateTime @updatedAt
 }
