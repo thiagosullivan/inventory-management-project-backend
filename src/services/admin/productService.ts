@@ -1,38 +1,70 @@
-// src/services/admin/productService.ts
 import {
   MovementStatus,
   MovementType,
   Role,
-} from "../../generated/prisma/enums.js";
-import { prisma } from "../../lib/prisma.js";
+} from "../../generated/prisma/enums";
+import { prisma } from "../../lib/prisma";
 import {
   CreateProductData,
-  UpdateProductData,
-  ProductResponse,
-  ProductsListResponse,
-  ProductFilters,
   MovementData,
   MovementResponse,
+  ProductFilters,
+  ProductResponse,
+  ProductsListResponse,
   StockSummary,
-} from "../../types/product.types.js";
+  UpdateProductData,
+} from "../../types/product.types";
 import {
-  validateProductData,
   validateMovementData,
-  skuExists,
-} from "../../utils/validation.js";
+  validateProductData,
+} from "../../utils/validation";
+
+/**
+ * 🔹 Recalcula a média ponderada móvel após uma ENTRADA com preço > 0.
+ * Regra MYOB: entrada com preço null/0 NÃO recalcula (mantém a média).
+ */
+function calculateNewAverage(
+  currentQuantity: number,
+  currentAvg: number | null,
+  incomingQuantity: number,
+  incomingPrice: number,
+): number {
+  // Se não havia média (primeira entrada com preço), a média é o preço de entrada.
+  if (currentAvg === null || currentQuantity <= 0) {
+    return incomingPrice;
+  }
+
+  const totalCurrentValue = currentQuantity * currentAvg;
+  const totalIncomingValue = incomingQuantity * incomingPrice;
+  const newQuantity = currentQuantity + incomingQuantity;
+
+  if (newQuantity <= 0) return incomingPrice;
+
+  return Math.round((totalCurrentValue + totalIncomingValue) / newQuantity);
+}
 
 export const productService = {
   /**
-   * Criar um novo produto (apenas MANAGER)
+   * Criar um novo produto.
+   * - Gera SKU em transação (CategoryCounter)
+   * - Aloca barcode em transação (ProductCounter)
+   * - Preenche avgPriceInCents = priceInCents na criação
+   * - Cria Movement de ENTRADA inicial (se quantity > 0)
+   * - StockHistory inicial vinculado ao Movement
    */
   async createProduct(
     data: CreateProductData,
     userId: string,
   ): Promise<ProductResponse> {
-    // 1. Validar dados (sem categoryId)
+    // 1. Normalizar nome
+    const normalizedName = data.name.trim().replace(/\s+/g, " ");
+    if (!normalizedName) {
+      throw new Error("Dados inválidos: nome é obrigatório");
+    }
+
+    // 2. Validar dados (sem sku — backend gera)
     const validation = validateProductData({
-      name: data.name,
-      sku: data.sku,
+      name: normalizedName,
       quantity: data.quantity,
       minStock: data.minStock,
       maxStock: data.maxStock,
@@ -41,59 +73,100 @@ export const productService = {
       throw new Error(`Dados inválidos: ${validation.errors.join(", ")}`);
     }
 
-    // 2. Verificar se SKU já existe
-    if (data.sku) {
-      const exists = await skuExists(prisma, data.sku);
-      if (exists) {
-        throw new Error(`SKU "${data.sku}" já está em uso`);
-      }
-    }
-
-    // 3. Verificar se a categoria existe
-    const categoryExists = await prisma.customCategory.findUnique({
+    // 3. Verificar categoria (e pegar prefix)
+    const category = await prisma.customCategory.findUnique({
       where: { id: data.categoryId },
-      select: { id: true },
+      select: { id: true, prefix: true, name: true },
     });
-    if (!categoryExists) {
+    if (!category) {
       throw new Error("Categoria não encontrada");
     }
 
-    // 4. Criar produto
-    const product = await prisma.product.create({
-      data: {
-        name: data.name.trim(),
-        sku: data.sku?.trim() || null,
-        description: data.description?.trim() || null,
-        categoryId: data.categoryId,
-        imageUrl: data.imageUrl?.trim() || null,
-        quantity: data.quantity || 0,
-        minStock: data.minStock || 5,
-        maxStock: data.maxStock || null,
-        expiryDate: data.expiryDate ? new Date(data.expiryDate) : null,
-        batchNumber: data.batchNumber?.trim() || null,
-        location: data.location?.trim() || null,
-        supplier: data.supplier?.trim() || null,
-        createdById: userId,
-      },
-      include: {
-        createdBy: { select: { id: true, name: true, email: true } },
-        updatedBy: { select: { id: true, name: true, email: true } },
-        category: { select: { id: true, name: true } },
-      },
+    const quantity = data.quantity ?? 0;
+    const priceInCents = data.priceInCents ?? null;
+    const supplier = data.supplier?.trim() || null;
+
+    // 4. Transação atômica
+    const product = await prisma.$transaction(async (tx) => {
+      // 4.1 CategoryCounter (SKU)
+      const categoryCounter = await tx.categoryCounter.update({
+        where: { categoryId: category.id },
+        data: { lastNumber: { increment: 1 } },
+        select: { lastNumber: true },
+      });
+      const skuNumber = String(categoryCounter.lastNumber).padStart(3, "0");
+      const sku = `${category.prefix}-${skuNumber}`;
+
+      // 4.2 ProductCounter (barcode) — upsert protege contra tabela vazia
+      const productCounter = await tx.productCounter.upsert({
+        where: { id: "singleton" },
+        update: { lastNumber: { increment: 1 } },
+        create: { id: "singleton", lastNumber: 1000001 },
+        select: { lastNumber: true },
+      });
+      const barcode = String(productCounter.lastNumber);
+
+      // 4.3 Criar produto
+      const created = await tx.product.create({
+        data: {
+          name: normalizedName,
+          sku,
+          barcode,
+          description: data.description?.trim() || null,
+          categoryId: category.id,
+          imageUrl: data.imageUrl?.trim() || null,
+          priceInCents,
+          avgPriceInCents: priceInCents, // primeira entrada: média = preço
+          quantity,
+          minStock: data.minStock ?? 5,
+          maxStock: data.maxStock ?? null,
+          expiryDate: data.expiryDate ? new Date(data.expiryDate) : null,
+          batchNumber: data.batchNumber?.trim() || null,
+          location: data.location?.trim() || null,
+          supplier,
+          createdById: userId,
+        },
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          updatedBy: { select: { id: true, name: true, email: true } },
+          category: { select: { id: true, name: true, prefix: true } },
+        },
+      });
+
+      // 4.4 Movement de ENTRADA inicial (se quantity > 0)
+      let initialMovementId: string | undefined;
+      if (created.quantity > 0) {
+        const movement = await tx.movement.create({
+          data: {
+            productId: created.id,
+            type: MovementType.ENTRADA,
+            quantity: created.quantity,
+            reason: "Entrada inicial (criação do produto)",
+            status: MovementStatus.CONCLUIDO,
+            unitPriceInCents: priceInCents,
+            supplier,
+            createdById: userId,
+          },
+        });
+        initialMovementId = movement.id;
+      }
+
+      // 4.5 StockHistory inicial
+      await tx.stockHistory.create({
+        data: {
+          productId: created.id,
+          oldQuantity: 0,
+          newQuantity: created.quantity,
+          movementId: initialMovementId ?? null,
+          changedById: userId,
+          reason: "Criação do produto",
+        },
+      });
+
+      return created;
     });
 
-    // 5. Criar histórico inicial
-    await prisma.stockHistory.create({
-      data: {
-        productId: product.id,
-        oldQuantity: 0,
-        newQuantity: product.quantity,
-        changedById: userId,
-        reason: "Criação do produto",
-      },
-    });
-
-    // 6. Verificar alertas
+    // 5. Alertas (fora da transação — efeito colateral)
     await this.checkStockAlerts(
       product.id,
       product.quantity,
@@ -107,42 +180,24 @@ export const productService = {
   /**
    * Listar produtos com filtros
    */
-  async listProducts(
-    filters?: ProductFilters,
-    // userId?: string,
-  ): Promise<ProductsListResponse> {
-    // 1. Construir filtros
+  async listProducts(filters?: ProductFilters): Promise<ProductsListResponse> {
     const where: any = {};
-
-    // Busca por nome ou SKU
-    // if (filters?.search) {
-    //   where.OR = [
-    //     { name: { contains: filters.search, mode: "insensitive" } },
-    //     { sku: { contains: filters.search, mode: "insensitive" } },
-    //     { description: { contains: filters.search, mode: "insensitive" } },
-    //   ];
-    // }
 
     if (filters?.search) {
       const rows = await prisma.$queryRaw<{ id: string }[]>`
-      SELECT id FROM "Product"
-      WHERE unaccent(name) ILIKE unaccent(${`%${filters.search}%`})
-         OR unaccent(coalesce(sku, '')) ILIKE unaccent(${`%${filters.search}%`})
-         OR unaccent(coalesce(description, '')) ILIKE unaccent(${`%${filters.search}%`})
-    `;
-
+        SELECT id FROM "Product"
+        WHERE unaccent(name) ILIKE unaccent(${`%${filters.search}%`})
+           OR unaccent(coalesce(sku, '')) ILIKE unaccent(${`%${filters.search}%`})
+           OR unaccent(coalesce(description, '')) ILIKE unaccent(${`%${filters.search}%`})
+      `;
       const searchIds = rows.map((r) => r.id);
-
-      // Se nada casou, força resultado vazio (evita cair no where sem filtro)
       where.id = { in: searchIds.length > 0 ? searchIds : ["__none__"] };
     }
 
-    // Filtro por categoria
     if (filters?.categoryId) {
       where.categoryId = filters.categoryId;
     }
 
-    // Filtro por quantidade
     if (filters?.minQuantity !== undefined) {
       where.quantity = { ...where.quantity, gte: filters.minQuantity };
     }
@@ -150,31 +205,24 @@ export const productService = {
       where.quantity = { ...where.quantity, lte: filters.maxQuantity };
     }
 
-    // Filtro por data de validade
     if (filters?.hasExpiryDate === true) {
       where.expiryDate = { not: null };
     } else if (filters?.hasExpiryDate === false) {
       where.expiryDate = null;
     }
 
-    // Filtro para produtos vencendo nos próximos 30 dias
     if (filters?.isExpiring) {
       const now = new Date();
       const thirtyDaysFromNow = new Date();
       thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-      where.expiryDate = {
-        gte: now,
-        lte: thirtyDaysFromNow,
-      };
+      where.expiryDate = { gte: now, lte: thirtyDaysFromNow };
     }
 
-    // Filtro para produtos vencidos (expiryDate < now)
     if (filters?.isExpired) {
       const now = new Date();
       where.expiryDate = { lt: now };
     }
 
-    // Filtro para estoque baixo
     if (filters?.isLowStock) {
       where.AND = [
         { minStock: { not: null } },
@@ -182,50 +230,22 @@ export const productService = {
       ];
     }
 
-    // Filtro por criador
     if (filters?.createdById) {
       where.createdById = filters.createdById;
     }
 
-    // Filtro por usuário (se for STAFF, só vê seus produtos)
-    // if (userId) {
-    //   const user = await prisma.user.findUnique({
-    //     where: { id: userId },
-    //     select: { role: true },
-    //   });
-    //   if (user?.role === Role.STAFF) {
-    //     where.createdById = userId;
-    //   }
-    // }
-
-    // 2. Paginação
     const page = filters?.page || 1;
     const limit = filters?.limit || 10;
     const skip = (page - 1) * limit;
-
-    // 3. Ordenação
     const sortBy = filters?.sortBy || "createdAt";
     const sortOrder = filters?.sortOrder || "desc";
 
-    // 4. Buscar produtos
     const [products, total] = await Promise.all([
       prisma.product.findMany({
         where,
         include: {
-          createdBy: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
-          updatedBy: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
+          createdBy: { select: { id: true, name: true, email: true } },
+          updatedBy: { select: { id: true, name: true, email: true } },
           category: { select: { id: true, name: true } },
         },
         orderBy: { [sortBy]: sortOrder },
@@ -248,34 +268,16 @@ export const productService = {
    * Buscar produto por ID
    */
   async getProductById(productId: string): Promise<ProductResponse | null> {
-    const product = await prisma.product.findUnique({
+    return prisma.product.findUnique({
       where: { id: productId },
       include: {
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        updatedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
+        createdBy: { select: { id: true, name: true, email: true } },
+        updatedBy: { select: { id: true, name: true, email: true } },
         stockHistory: {
           orderBy: { changedAt: "desc" },
           take: 10,
           include: {
-            changedBy: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-              },
-            },
+            changedBy: { select: { id: true, name: true, email: true } },
           },
         },
         stockAlerts: {
@@ -283,46 +285,55 @@ export const productService = {
         },
       },
     });
-
-    return product;
   },
 
   /**
    * Buscar produto por SKU
    */
   async getProductBySku(sku: string): Promise<ProductResponse | null> {
-    const product = await prisma.product.findUnique({
+    return prisma.product.findUnique({
       where: { sku },
       include: {
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        updatedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
+        createdBy: { select: { id: true, name: true, email: true } },
+        updatedBy: { select: { id: true, name: true, email: true } },
       },
     });
-
-    return product;
   },
 
   /**
-   * Atualizar produto (apenas MANAGER)
+   * Buscar produto por barcode (habilita bipagem)
+   */
+  async getProductByBarcode(barcode: string): Promise<ProductResponse | null> {
+    return prisma.product.findUnique({
+      where: { barcode },
+      include: {
+        createdBy: { select: { id: true, name: true, email: true } },
+        updatedBy: { select: { id: true, name: true, email: true } },
+        category: { select: { id: true, name: true, prefix: true } },
+      },
+    });
+  },
+
+  /**
+   * Preview do próximo barcode (NÃO aloca)
+   */
+  async getNextBarcode(): Promise<{ barcode: string }> {
+    const counter = await prisma.productCounter.findUnique({
+      where: { id: "singleton" },
+      select: { lastNumber: true },
+    });
+    const next = (counter?.lastNumber ?? 1000000) + 1;
+    return { barcode: String(next) };
+  },
+
+  /**
+   * Atualizar produto (não mexe em sku nem avgPriceInCents)
    */
   async updateProduct(
     productId: string,
     data: UpdateProductData,
     userId: string,
   ): Promise<ProductResponse> {
-    // 1. Verificar se o produto existe
     const existingProduct = await prisma.product.findUnique({
       where: { id: productId },
       include: {
@@ -334,7 +345,6 @@ export const productService = {
       throw new Error("Produto não encontrado");
     }
 
-    // 2. Verificar permissão
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { role: true },
@@ -349,30 +359,18 @@ export const productService = {
       );
     }
 
-    // 3. Validar dados (sem category)
     if (data.name) {
       const validation = validateProductData({
         name: data.name,
-        sku: data.sku,
         quantity: data.quantity,
         minStock: data.minStock,
         maxStock: data.maxStock,
-        // 🔹 sem category/categoryId — validado pela query abaixo
       });
       if (!validation.isValid) {
         throw new Error(`Dados inválidos: ${validation.errors.join(", ")}`);
       }
     }
 
-    // 4. Verificar SKU duplicado
-    if (data.sku) {
-      const exists = await skuExists(prisma, data.sku, productId);
-      if (exists) {
-        throw new Error(`SKU "${data.sku}" já está em uso`);
-      }
-    }
-
-    // 5. Verificar se a nova categoria existe (só se foi enviada)  🔹 NOVO
     if (data.categoryId !== undefined) {
       const categoryExists = await prisma.customCategory.findUnique({
         where: { id: data.categoryId },
@@ -383,13 +381,12 @@ export const productService = {
       }
     }
 
-    // 6. Preparar dados para atualização
     const updateData: any = {
-      name: data.name?.trim(),
-      sku: data.sku?.trim() || null,
+      name: data.name?.trim().replace(/\s+/g, " "),
       description: data.description?.trim() || null,
       imageUrl: data.imageUrl?.trim() || null,
-      categoryId: data.categoryId, // 🔹 era: category
+      priceInCents: data.priceInCents, // undefined → removido; null → limpa
+      categoryId: data.categoryId,
       minStock: data.minStock,
       maxStock: data.maxStock,
       expiryDate: data.expiryDate
@@ -403,14 +400,12 @@ export const productService = {
       updatedById: userId,
     };
 
-    // Remover campos undefined
     Object.keys(updateData).forEach((key) => {
       if (updateData[key] === undefined) {
         delete updateData[key];
       }
     });
 
-    // 7. Se quantidade mudou, registrar histórico
     if (
       data.quantity !== undefined &&
       data.quantity !== existingProduct.quantity
@@ -419,7 +414,7 @@ export const productService = {
 
       await prisma.stockHistory.create({
         data: {
-          productId: productId,
+          productId,
           oldQuantity: existingProduct.quantity,
           newQuantity: data.quantity,
           changedById: userId,
@@ -437,37 +432,27 @@ export const productService = {
       );
     }
 
-    // 8. Atualizar produto
-    const updatedProduct = await prisma.product.update({
+    return prisma.product.update({
       where: { id: productId },
       data: updateData,
       include: {
         createdBy: { select: { id: true, name: true, email: true } },
         updatedBy: { select: { id: true, name: true, email: true } },
-        category: { select: { id: true, name: true } }, // 🔹 NOVO
+        category: { select: { id: true, name: true } },
       },
     });
-
-    return updatedProduct;
   },
 
   /**
-   * Deletar produto (apenas MANAGER)
+   * Deletar produto (limpa relacionamentos)
    */
   async deleteProduct(productId: string, userId: string): Promise<void> {
-    // 1. Verificar se o produto existe
     const existingProduct = await prisma.product.findUnique({
       where: { id: productId },
       include: {
-        movements: {
-          select: { id: true },
-        },
-        stockHistory: {
-          select: { id: true },
-        },
-        stockAlerts: {
-          select: { id: true },
-        },
+        movements: { select: { id: true } },
+        stockHistory: { select: { id: true } },
+        stockAlerts: { select: { id: true } },
       },
     });
 
@@ -475,7 +460,6 @@ export const productService = {
       throw new Error("Produto não encontrado");
     }
 
-    // 2. Verificar se o usuário tem permissão (MANAGER ou criador)
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { role: true },
@@ -490,57 +474,35 @@ export const productService = {
       );
     }
 
-    // 3. ✅ Deletar registros relacionados (na ordem correta)
-
-    // 3.1 Primeiro, deletar os StockHistory (onde não tem movementId)
     await prisma.stockHistory.deleteMany({
-      where: {
-        productId: productId,
-        movementId: null, // Só os que não têm movimento associado
-      },
+      where: { productId, movementId: null },
     });
 
-    // 3.2 Depois, atualizar os StockHistory que têm movementId para remover a referência
     await prisma.stockHistory.updateMany({
-      where: {
-        productId: productId,
-        movementId: { not: null },
-      },
-      data: {
-        movementId: null, // Remove a referência ao movimento
-      },
+      where: { productId, movementId: { not: null } },
+      data: { movementId: null },
     });
 
-    // 3.3 Deletar os Movimentos
-    await prisma.movement.deleteMany({
-      where: { productId: productId },
-    });
-
-    // 3.4 Deletar os StockAlerts
-    await prisma.stockAlert.deleteMany({
-      where: { productId: productId },
-    });
-
-    // 3.5 Agora deletar o produto (não tem mais restrições)
-    await prisma.product.delete({
-      where: { id: productId },
-    });
+    await prisma.movement.deleteMany({ where: { productId } });
+    await prisma.stockAlert.deleteMany({ where: { productId } });
+    await prisma.product.delete({ where: { id: productId } });
   },
 
   /**
-   * Movimentar estoque (ENTRADA, SAÍDA, AJUSTE)
+   * Movimentar estoque (ENTRADA, SAIDA, AJUSTE)
+   * - ENTRADA: grava unitPriceInCents/supplier, recalcula avgPriceInCents (se preço > 0),
+   *   atualiza cache priceInCents/supplier no Product.
+   * - SAIDA/AJUSTE: não mexe em preço/média.
    */
   async createMovement(
     data: MovementData,
     userId: string,
   ): Promise<MovementResponse> {
-    // 1. Validar dados
     const validation = validateMovementData(data);
     if (!validation.isValid) {
       throw new Error(`Dados inválidos: ${validation.errors.join(", ")}`);
     }
 
-    // 2. Verificar se o produto existe
     const product = await prisma.product.findUnique({
       where: { id: data.productId },
     });
@@ -549,7 +511,6 @@ export const productService = {
       throw new Error("Produto não encontrado");
     }
 
-    // 3. Calcular nova quantidade
     let newQuantity = product.quantity;
     let movementQuantity = data.quantity;
 
@@ -564,7 +525,6 @@ export const productService = {
       newQuantity -= data.quantity;
       movementQuantity = -data.quantity;
     } else if (data.type === MovementType.AJUSTE) {
-      // Para ajuste, quantity é a nova quantidade total
       if (data.quantity < 0) {
         throw new Error("Quantidade para ajuste não pode ser negativa");
       }
@@ -572,7 +532,12 @@ export const productService = {
       newQuantity = data.quantity;
     }
 
-    // 4. Criar movimento
+    // Preparar campos de preço/fornecedor (só ENTRADA)
+    const isEntrada = data.type === MovementType.ENTRADA;
+    const unitPriceInCents = isEntrada ? (data.unitPriceInCents ?? null) : null;
+    const supplier = isEntrada ? data.supplier?.trim() || null : null;
+
+    // Criar movement
     const movement = await prisma.movement.create({
       data: {
         productId: data.productId,
@@ -580,46 +545,57 @@ export const productService = {
         quantity: movementQuantity,
         reason: data.reason?.trim() || null,
         status: MovementStatus.CONCLUIDO,
+        unitPriceInCents,
+        supplier,
         createdById: userId,
       },
       include: {
         product: {
-          select: {
-            id: true,
-            name: true,
-            sku: true,
-            quantity: true,
-          },
+          select: { id: true, name: true, sku: true, quantity: true },
         },
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
+        createdBy: { select: { id: true, name: true, email: true } },
       },
     });
 
-    // 5. Atualizar estoque do produto
+    // Atualizar estoque + cache/média
+    const productUpdate: any = { quantity: newQuantity };
+
+    if (isEntrada) {
+      // Preço/fornecedor só atualizam com preço > 0.
+      // unitPriceInCents: 0 ou null = "sem preço de compra" (doação, brinde) — não sobrescreve cache.
+      if (unitPriceInCents !== null && unitPriceInCents > 0) {
+        productUpdate.priceInCents = unitPriceInCents;
+        productUpdate.avgPriceInCents = calculateNewAverage(
+          product.quantity,
+          product.avgPriceInCents,
+          data.quantity,
+          unitPriceInCents,
+        );
+      }
+
+      if (supplier !== null) {
+        productUpdate.supplier = supplier;
+      }
+    }
+
     await prisma.product.update({
       where: { id: data.productId },
-      data: { quantity: newQuantity },
+      data: productUpdate,
     });
 
-    // 6. Criar histórico
+    // Histórico
     await prisma.stockHistory.create({
       data: {
         productId: data.productId,
         oldQuantity: product.quantity,
-        newQuantity: newQuantity,
+        newQuantity,
         movementId: movement.id,
         changedById: userId,
         reason: data.reason || `Movimentação: ${data.type}`,
       },
     });
 
-    // 7. Verificar alertas de estoque
+    // Alertas
     await this.checkStockAlerts(
       data.productId,
       newQuantity,
@@ -631,7 +607,7 @@ export const productService = {
   },
 
   /**
-   * Verificar alertas de estoque
+   * Verificar alertas de estoque (sem alterações)
    */
   async checkStockAlerts(
     productId: string,
@@ -641,16 +617,13 @@ export const productService = {
   ): Promise<void> {
     const alerts = [];
 
-    // ✅ 1. Verificar se está em falta (OUT_OF_STOCK)
     if (quantity === 0) {
       alerts.push({
         productId,
         alertType: "OUT_OF_STOCK",
         message: `Produto com estoque zerado`,
       });
-    }
-    // ✅ 2. Verificar se está com estoque baixo (LOW_STOCK) - apenas se quantity > 0
-    else if (minStock !== null && quantity <= minStock) {
+    } else if (minStock !== null && quantity <= minStock) {
       alerts.push({
         productId,
         alertType: "LOW_STOCK",
@@ -658,7 +631,6 @@ export const productService = {
       });
     }
 
-    // ✅ 3. Verificar validade
     if (expiryDate) {
       const now = new Date();
       const thirtyDaysFromNow = new Date();
@@ -679,7 +651,6 @@ export const productService = {
       }
     }
 
-    // Criar alertas
     for (const alertData of alerts) {
       const existingAlert = await prisma.stockAlert.findFirst({
         where: {
@@ -688,78 +659,44 @@ export const productService = {
           isResolved: false,
         },
       });
-
       if (!existingAlert) {
-        await prisma.stockAlert.create({
-          data: alertData,
-        });
+        await prisma.stockAlert.create({ data: alertData });
       }
     }
 
-    // ✅ 4. Resolver alertas que não são mais válidos
-
-    // Resolver LOW_STOCK quando quantity > minStock (e quantity > 0)
     if (minStock !== null && quantity > minStock && quantity > 0) {
       await prisma.stockAlert.updateMany({
-        where: {
-          productId,
-          alertType: "LOW_STOCK",
-          isResolved: false,
-        },
-        data: {
-          isResolved: true,
-          resolvedAt: new Date(),
-        },
+        where: { productId, alertType: "LOW_STOCK", isResolved: false },
+        data: { isResolved: true, resolvedAt: new Date() },
       });
     }
 
-    // Resolver OUT_OF_STOCK quando quantity > 0
     if (quantity > 0) {
       await prisma.stockAlert.updateMany({
-        where: {
-          productId,
-          alertType: "OUT_OF_STOCK",
-          isResolved: false,
-        },
-        data: {
-          isResolved: true,
-          resolvedAt: new Date(),
-        },
+        where: { productId, alertType: "OUT_OF_STOCK", isResolved: false },
+        data: { isResolved: true, resolvedAt: new Date() },
       });
     }
 
-    // Resolver alertas de validade
     if (expiryDate) {
       const now = new Date();
       if (expiryDate > now) {
-        // Produto não está mais vencido
         await prisma.stockAlert.updateMany({
-          where: {
-            productId,
-            alertType: "EXPIRED",
-            isResolved: false,
-          },
-          data: {
-            isResolved: true,
-            resolvedAt: new Date(),
-          },
+          where: { productId, alertType: "EXPIRED", isResolved: false },
+          data: { isResolved: true, resolvedAt: new Date() },
         });
       }
 
       const thirtyDaysFromNow = new Date();
       thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
       if (expiryDate > thirtyDaysFromNow) {
-        // Produto não está mais perto de vencer
         await prisma.stockAlert.updateMany({
           where: {
             productId,
             alertType: "EXPIRING_SOON",
             isResolved: false,
           },
-          data: {
-            isResolved: true,
-            resolvedAt: new Date(),
-          },
+          data: { isResolved: true, resolvedAt: new Date() },
         });
       }
     }
@@ -772,26 +709,19 @@ export const productService = {
     const alert = await prisma.stockAlert.findUnique({
       where: { id: alertId },
     });
-
     if (!alert) {
       throw new Error("Alerta não encontrado");
     }
-
     await prisma.stockAlert.update({
       where: { id: alertId },
-      data: {
-        isResolved: true,
-        resolvedAt: new Date(),
-        resolvedBy: userId,
-      },
+      data: { isResolved: true, resolvedAt: new Date(), resolvedBy: userId },
     });
   },
 
   /**
-   * Obter resumo do estoque
+   * Resumo do estoque
    */
   async getStockSummary(userId?: string): Promise<StockSummary> {
-    // Verificar se é STAFF (só vê seus produtos)
     let where: any = {};
     if (userId) {
       const user = await prisma.user.findUnique({
@@ -803,7 +733,6 @@ export const productService = {
       }
     }
 
-    // Buscar todos os produtos
     const products = await prisma.product.findMany({
       where,
       select: {
@@ -811,16 +740,10 @@ export const productService = {
         quantity: true,
         minStock: true,
         expiryDate: true,
-        category: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
+        category: { select: { id: true, name: true } },
       },
     });
 
-    // Calcular métricas
     const totalProducts = products.length;
     const totalItems = products.reduce((sum, p) => sum + p.quantity, 0);
     const lowStockCount = products.filter(
@@ -838,15 +761,9 @@ export const productService = {
         p.expiryDate >= now,
     ).length;
 
-    // Agrupar por categoria
     const categoryMap = new Map<
       string,
-      {
-        categoryId: string;
-        categoryName: string;
-        count: number;
-        items: number;
-      }
+      { categoryId: string; categoryName: string; count: number; items: number }
     >();
 
     for (const product of products) {
@@ -864,20 +781,18 @@ export const productService = {
       cat.items += product.quantity;
     }
 
-    const categories = Array.from(categoryMap.values());
-
     return {
       totalProducts,
       totalItems,
       lowStockCount,
       outOfStockCount,
       expiringSoonCount,
-      categories,
+      categories: Array.from(categoryMap.values()),
     };
   },
 
   /**
-   * Buscar movimentações de um produto
+   * Movimentações de um produto
    */
   async getProductMovements(
     productId: string,
@@ -889,20 +804,9 @@ export const productService = {
         where: { productId },
         include: {
           product: {
-            select: {
-              id: true,
-              name: true,
-              sku: true,
-              quantity: true,
-            },
+            select: { id: true, name: true, sku: true, quantity: true },
           },
-          createdBy: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
+          createdBy: { select: { id: true, name: true, email: true } },
         },
         orderBy: { createdAt: "desc" },
         skip: offset,
@@ -915,7 +819,7 @@ export const productService = {
   },
 
   /**
-   * Buscar histórico de um produto
+   * Histórico de um produto
    */
   async getProductHistory(
     productId: string,
@@ -926,18 +830,14 @@ export const productService = {
       prisma.stockHistory.findMany({
         where: { productId },
         include: {
-          changedBy: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
+          changedBy: { select: { id: true, name: true, email: true } },
           movement: {
             select: {
               id: true,
               type: true,
               quantity: true,
+              unitPriceInCents: true,
+              supplier: true,
             },
           },
         },
