@@ -17,6 +17,7 @@ export interface UpdateCategoryData {
 export interface CategoryResponse {
   id: string;
   name: string;
+  prefix: string;
   description: string | null;
   createdById: string;
   createdBy?: { id: string; name: string | null };
@@ -39,4 +40,11 @@ export interface CategoryFilters {
   search?: string;
   page?: number;
   limit?: number;
+}
+
+// 🔹 Tipo do /options — ganha prefix
+export interface CategoryOption {
+  label: string;
+  value: string;
+  prefix: string; // 🔹 NOVO
 }
