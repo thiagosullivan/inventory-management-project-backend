@@ -3,6 +3,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, Role } from "../generated/prisma/client.js";
 import { auth } from "../lib/auth.js";
+import { generatePrefix } from "../utils/generate-prefix.js";
 
 const connectionString = `${process.env.DATABASE_URL}`;
 const adapter = new PrismaPg({ connectionString });
@@ -17,7 +18,6 @@ async function main() {
   // ============================================
   // 1. CRIAR USUÁRIO MANAGER USANDO BETTER AUTH
   // ============================================
-  // 🔹 Movido pra primeiro — categorias precisam do admin.id
   console.log("\n👤 Criando usuário MANAGER...");
 
   const managerEmail = "admin@estoque.com";
@@ -122,9 +122,8 @@ async function main() {
   }
 
   // ============================================
-  // 3. CRIAR CATEGORIAS BASE (AGORA COM createdById)
+  // 3. CRIAR CATEGORIAS BASE (com prefix + counter)
   // ============================================
-  // 🔹 Movido pra depois do MANAGER — precisa do admin.id como dono
   console.log("\n📂 Criando categorias base...");
 
   const categoryNames = [
@@ -139,17 +138,49 @@ async function main() {
 
   const categoryMap = new Map<string, string>(); // name -> id
 
+  // Buscar prefixes existentes uma vez (pra resolver colisão)
+  const existing = await prisma.customCategory.findMany({
+    select: { prefix: true },
+  });
+  const existingPrefixes = new Set(existing.map((c) => c.prefix));
+
   for (const name of categoryNames) {
-    const category = await prisma.customCategory.upsert({
+    const existingCategory = await prisma.customCategory.findUnique({
       where: { name },
-      update: {}, // 🔹 se já existe, não mexe (preserva createdById original)
-      create: {
-        name,
-        createdById: admin.id, // 🔹 dono = MANAGER do seed
-      },
     });
+
+    if (existingCategory) {
+      categoryMap.set(name, existingCategory.id);
+      console.log(
+        `   ℹ️ ${name} já existe (prefix: ${existingCategory.prefix}, id: ${existingCategory.id})`,
+      );
+      continue;
+    }
+
+    // Gera prefix resolvendo colisão com os já existentes
+    const prefix = generatePrefix(name, existingPrefixes);
+    existingPrefixes.add(prefix); // importante: adiciona ao Set pra próxima iteração
+
+    // Cria categoria + counter em transação
+    const category = await prisma.$transaction(async (tx) => {
+      const created = await tx.customCategory.create({
+        data: {
+          name,
+          prefix,
+          createdById: admin.id,
+        },
+      });
+      await tx.categoryCounter.create({
+        data: {
+          categoryId: created.id,
+          lastNumber: 0,
+        },
+      });
+      return created;
+    });
+
     categoryMap.set(name, category.id);
-    console.log(`   ✅ ${name} (id: ${category.id})`);
+    console.log(`   ✅ ${name} (prefix: ${prefix}, id: ${category.id})`);
   }
 
   // Helper pra pegar id ou explodir com erro claro
@@ -290,11 +321,11 @@ async function main() {
   let createdCount = 0;
 
   for (const productData of products) {
-    const existing = await prisma.product.findUnique({
+    const existingProduct = await prisma.product.findUnique({
       where: { sku: productData.sku },
     });
 
-    if (!existing) {
+    if (!existingProduct) {
       await prisma.product.create({
         data: {
           createdById: admin.id,
@@ -306,6 +337,7 @@ async function main() {
           location: productData.location,
           supplier: productData.supplier,
           description: productData.description,
+          imageUrl: productData.imageUrl,
           expiryDate: productData.expiryDate || null,
         },
       });
