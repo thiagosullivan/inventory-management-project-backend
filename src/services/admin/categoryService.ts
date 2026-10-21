@@ -5,12 +5,15 @@ import {
   CategoryResponse,
   CategoriesListResponse,
   CategoryFilters,
+  CategoryOption,
 } from "../../types/category.types.js";
 import {
   validateCategoryData,
   categoryNameExists,
+  normalizeText,
 } from "../../utils/validation.js";
 import { Role } from "../../generated/prisma/enums.js";
+import { generatePrefix } from "../../utils/generate-prefix.js";
 
 /**
  * 🔹 Checa se o usuário pode modificar (editar/deletar) uma categoria.
@@ -58,25 +61,54 @@ export const categoryService = {
     data: CreateCategoryData,
     userId: string,
   ): Promise<CategoryResponse> {
-    const validation = validateCategoryData(data);
+    // 1. Normalizar nome ANTES de validar/checar duplicata
+    const normalizedName = normalizeText(data.name);
+    const normalizedDescription = data.description
+      ? normalizeText(data.description)
+      : undefined;
+
+    const validation = validateCategoryData({
+      name: normalizedName,
+      description: normalizedDescription,
+    });
     if (!validation.isValid) {
       throw new Error(`Dados inválidos: ${validation.errors.join(", ")}`);
     }
 
-    // 🔹 Não checa mais role — qualquer autenticado cria
-    // (a permissão é garantida pelo middleware isStaff na rota)
-
-    const nameExists = await categoryNameExists(prisma, data.name);
+    // 2. Checar duplicata com nome normalizado
+    const nameExists = await categoryNameExists(prisma, normalizedName);
     if (nameExists) {
-      throw new Error(`Categoria "${data.name}" já existe`);
+      throw new Error(`Categoria "${normalizedName}" já existe`);
     }
 
-    const category = await prisma.customCategory.create({
-      data: {
-        name: data.name.trim(),
-        description: data.description?.trim() || null,
-        createdById: userId, // 🔹 dono da categoria
-      },
+    // 3. Buscar prefixes existentes (pra resolver colisão)
+    const existing = await prisma.customCategory.findMany({
+      select: { prefix: true },
+    });
+    const existingPrefixes = new Set(existing.map((c) => c.prefix));
+
+    // 4. Gerar prefix
+    const prefix = generatePrefix(normalizedName, existingPrefixes);
+
+    // 5. Criar categoria + counter em transação
+    const category = await prisma.$transaction(async (tx) => {
+      const created = await tx.customCategory.create({
+        data: {
+          name: normalizedName,
+          prefix,
+          description: normalizedDescription ?? null,
+          createdById: userId,
+        },
+      });
+
+      await tx.categoryCounter.create({
+        data: {
+          categoryId: created.id,
+          lastNumber: 0,
+        },
+      });
+
+      return created;
     });
 
     return category;
@@ -146,13 +178,20 @@ export const categoryService = {
     data: UpdateCategoryData,
     userId: string,
   ): Promise<CategoryResponse> {
-    // 🔹 Checagem de permissão (Modelo 3)
     await ensureCanModifyCategory(categoryId, userId, "editar");
 
-    if (data.name) {
+    const normalizedName = data.name ? normalizeText(data.name) : undefined;
+    const normalizedDescription =
+      data.description !== undefined
+        ? data.description
+          ? normalizeText(data.description)
+          : null
+        : undefined;
+
+    if (normalizedName) {
       const validation = validateCategoryData({
-        name: data.name,
-        description: data.description,
+        name: normalizedName,
+        description: normalizedDescription ?? undefined,
       });
       if (!validation.isValid) {
         throw new Error(`Dados inválidos: ${validation.errors.join(", ")}`);
@@ -160,19 +199,22 @@ export const categoryService = {
 
       const nameExists = await categoryNameExists(
         prisma,
-        data.name,
+        normalizedName,
         categoryId,
       );
       if (nameExists) {
-        throw new Error(`Categoria "${data.name}" já existe`);
+        throw new Error(`Categoria "${normalizedName}" já existe`);
       }
     }
 
     const updatedCategory = await prisma.customCategory.update({
       where: { id: categoryId },
       data: {
-        name: data.name?.trim(),
-        description: data.description?.trim() || null,
+        ...(normalizedName !== undefined && { name: normalizedName }),
+        ...(normalizedDescription !== undefined && {
+          description: normalizedDescription,
+        }),
+        // 🔹 NÃO toca em prefix nem counter (imutáveis)
       },
     });
 
@@ -201,18 +243,20 @@ export const categoryService = {
   },
 
   // List category for dropdown (STAFF and MANAGER)
-  async getCategoryOptions(): Promise<{ label: string; value: string }[]> {
+  async getCategoryOptions(): Promise<CategoryOption[]> {
     const categories = await prisma.customCategory.findMany({
       orderBy: { name: "asc" },
       select: {
         id: true,
         name: true,
+        prefix: true,
       },
     });
 
     return categories.map((cat) => ({
       label: cat.name,
       value: cat.id,
+      prefix: cat.prefix,
     }));
   },
 };
