@@ -212,3 +212,10 @@ export async function skuExists(
   });
   return !!product;
 }
+
+/**
+ * Normaliza texto de entrada (nome de categoria/produto).
+ */
+export function normalizeText(input: string): string {
+  return input.trim().replace(/\s+/g, " ");
+}
