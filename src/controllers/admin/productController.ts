@@ -238,9 +238,10 @@ export const productController = {
 
       if (
         !data.name &&
-        data.sku === undefined &&
         !data.description &&
         data.categoryId === undefined &&
+        data.imageUrl === undefined &&
+        data.priceInCents === undefined &&
         data.quantity === undefined &&
         data.minStock === undefined &&
         data.maxStock === undefined &&
@@ -283,14 +284,6 @@ export const productController = {
           success: false,
           message: error.message,
           code: "INVALID_DATA",
-        });
-      }
-
-      if (error.message.includes("SKU")) {
-        return res.status(409).json({
-          success: false,
-          message: error.message,
-          code: "SKU_ALREADY_EXISTS",
         });
       }
 
@@ -391,7 +384,7 @@ export const productController = {
         });
       }
 
-      const { type, quantity, reason } = req.body;
+      const { type, quantity, reason, unitPriceInCents, supplier } = req.body;
 
       if (!type) {
         return res.status(400).json({
@@ -422,6 +415,8 @@ export const productController = {
         type,
         quantity,
         reason,
+        unitPriceInCents,
+        supplier,
       };
 
       const movement = await productService.createMovement(
@@ -620,6 +615,62 @@ export const productController = {
       return res.status(500).json({
         success: false,
         message: "Erro ao buscar histórico",
+        code: "INTERNAL_ERROR",
+      });
+    }
+  },
+
+  /**
+   * Preview do próximo barcode (NÃO aloca)
+   * GET /api/admin/products/barcode/next
+   */
+  async getNextBarcode(req: Request, res: Response) {
+    try {
+      const result = await productService.getNextBarcode();
+      return res.status(200).json({ success: true, data: result });
+    } catch (error: any) {
+      console.error("❌ Erro ao gerar preview de barcode:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Erro ao gerar preview de barcode",
+        code: "INTERNAL_ERROR",
+      });
+    }
+  },
+
+  /**
+   * Get product by barcode (STAFF and MANAGER)
+   * GET /api/admin/products/barcode/:barcode
+   */
+  async getProductByBarcode(req: Request, res: Response) {
+    try {
+      const { barcode } = req.params;
+      const code = typeof barcode === "string" ? barcode : barcode[0];
+
+      if (!code) {
+        return res.status(400).json({
+          success: false,
+          message: "Barcode é obrigatório",
+          code: "MISSING_BARCODE",
+        });
+      }
+
+      const product = await productService.getProductByBarcode(code);
+
+      if (!product) {
+        return res.status(404).json({
+          success: false,
+          message: "Produto não encontrado",
+          code: "PRODUCT_NOT_FOUND",
+        });
+      }
+
+      return res.status(200).json({ success: true, data: product });
+    } catch (error: any) {
+      console.error("❌ Erro ao buscar produto por barcode:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Erro ao buscar produto por barcode",
         code: "INTERNAL_ERROR",
       });
     }
