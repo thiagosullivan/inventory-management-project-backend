@@ -135,7 +135,8 @@ export const userController = {
         });
       }
 
-      const userId = req.params.id;
+      const { id } = req.params;
+      const userId = typeof id === "string" ? id : id[0];
 
       if (!userId) {
         return res.status(400).json({
@@ -184,7 +185,8 @@ export const userController = {
         });
       }
 
-      const userId = req.params.id;
+      const { id } = req.params;
+      const userId = typeof id === "string" ? id : id[0];
 
       if (!userId) {
         return res.status(400).json({
@@ -235,8 +237,8 @@ export const userController = {
         });
       }
 
-      const userId = req.params.id;
-      const { role } = req.body;
+      const { id } = req.params;
+      const userId = typeof id === "string" ? id : id[0];
 
       if (!userId) {
         return res.status(400).json({
@@ -245,6 +247,8 @@ export const userController = {
           code: "MISSING_ID",
         });
       }
+
+      const { role } = req.body;
 
       if (!role) {
         return res.status(400).json({
@@ -303,7 +307,8 @@ export const userController = {
         });
       }
 
-      const userId = req.params.id;
+      const { id } = req.params;
+      const userId = typeof id === "string" ? id : id[0];
 
       if (!userId) {
         return res.status(400).json({
