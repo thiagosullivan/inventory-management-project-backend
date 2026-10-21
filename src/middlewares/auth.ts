@@ -58,6 +58,7 @@ export const authenticate = async (
       name: fullUser.name || "",
       role: fullUser.role,
       emailVerified: fullUser.emailVerified || false,
+      isActive: true,
     };
 
     next();
