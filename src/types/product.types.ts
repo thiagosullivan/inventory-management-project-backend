@@ -4,15 +4,16 @@ import { MovementStatus, MovementType } from "../generated/prisma/enums";
 export interface ProductCategoryRef {
   id: string;
   name: string;
+  prefix?: string;
 }
 
 // Dados para criar um produto
 export interface CreateProductData {
   name: string;
-  sku?: string;
   description?: string;
   categoryId: string;
   imageUrl?: string;
+  priceInCents?: number;
   quantity?: number;
   minStock?: number;
   maxStock?: number;
@@ -25,10 +26,10 @@ export interface CreateProductData {
 // Dados para atualizar um produto
 export interface UpdateProductData {
   name?: string;
-  sku?: string;
   description?: string;
   categoryId?: string;
   imageUrl?: string;
+  priceInCents?: number | null;
   quantity?: number;
   minStock?: number;
   maxStock?: number;
@@ -43,10 +44,14 @@ export interface UpdateProductData {
 export interface ProductResponse {
   id: string;
   name: string;
-  sku: string | null;
+  sku: string;
+  barcode: string;
   description: string | null;
-  categoryId: string; // 🔹 era: category: ProductCategory
-  category?: ProductCategoryRef; // 🔹 relação (opcional, depende do include)
+  categoryId: string;
+  category?: ProductCategoryRef;
+  imageUrl: string | null;
+  priceInCents: number | null;
+  avgPriceInCents: number | null;
   quantity: number;
   minStock: number | null;
   maxStock: number | null;
@@ -92,7 +97,7 @@ export interface ProductFilters {
   createdById?: string;
   page?: number;
   limit?: number;
-  sortBy?: "name" | "createdAt" | "quantity" | "expiryDate";
+  sortBy?: "name" | "createdAt" | "quantity" | "expiryDate" | "updatedAt";
   sortOrder?: "asc" | "desc";
 }
 
@@ -102,6 +107,8 @@ export interface MovementData {
   type: MovementType;
   quantity: number;
   reason?: string;
+  unitPriceInCents?: number;
+  supplier?: string;
 }
 
 // Resposta de movimentação
@@ -112,13 +119,17 @@ export interface MovementResponse {
   quantity: number;
   reason: string | null;
   status: MovementStatus;
+  unitPriceInCents: number | null;
+  supplier: string | null;
+  fromSectorId: string | null;
+  toSectorId: string | null;
   createdById: string;
   createdAt: Date;
   updatedAt: Date;
   product?: {
     id: string;
     name: string;
-    sku: string | null;
+    sku: string;
     quantity: number;
   };
   createdBy?: {
@@ -136,9 +147,13 @@ export interface StockSummary {
   outOfStockCount: number;
   expiringSoonCount: number;
   categories: {
-    categoryId: string; // 🔹 era: category: ProductCategory
-    categoryName: string; // 🔹 NOVO: nome pra exibir no dashboard
+    categoryId: string;
+    categoryName: string;
     count: number;
     items: number;
   }[];
+}
+
+export interface NextBarcodeResponse {
+  barcode: string;
 }
