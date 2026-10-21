@@ -1,4 +1,3 @@
-// prisma/schema.prisma
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -6,6 +5,204 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+model User {
+  id                String           @id @default(cuid())
+  email             String           @unique(map: "user_email_key")
+  name              String?
+  password          String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  image             String?
+  role              Role             @default(STAFF)
+  isActive          Boolean          @default(true)
+  lastLogin         DateTime?
+  emailVerified     Boolean          @default(false)
+  sectorId          String? // 🔹 NOVO — nullable, Fase 8 preenche
+  accounts          Account[]
+  createdCategories CustomCategory[] @relation("CategoryCreatedBy")
+  movements         Movement[]       @relation("CreatedBy")
+  createdProducts   Product[]        @relation("CreatedBy")
+  updatedProducts   Product[]        @relation("UpdatedBy")
+  sessions          Session[]
+  stockHistory      StockHistory[]
+  verifications     Verification[]
+
+  @@index([email])
+  @@index([role])
+  @@index([isActive])
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  idToken               String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+
+  @@unique([identifier, value])
+}
+
+model Product {
+  id              String         @id @default(cuid())
+  name            String
+  sku             String         @unique(map: "product_sku_key") // 🔹 era String?
+  barcode         String         @unique(map: "product_barcode_key") // 🔹 NOVO
+  description     String?
+  quantity        Int            @default(0)
+  minStock        Int?           @default(5)
+  maxStock        Int?
+  expiryDate      DateTime?
+  batchNumber     String?
+  location        String?
+  supplier        String?
+  createdById     String
+  updatedById     String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  categoryId      String
+  imageUrl        String?
+  priceInCents    Int? // último preço de compra (cache)
+  avgPriceInCents Int? // 🔹 NOVO — média ponderada móvel
+  movements       Movement[]
+  category        CustomCategory @relation(fields: [categoryId], references: [id])
+  createdBy       User           @relation("CreatedBy", fields: [createdById], references: [id])
+  updatedBy       User?          @relation("UpdatedBy", fields: [updatedById], references: [id])
+  stockAlerts     StockAlert[]
+  stockHistory    StockHistory[]
+
+  @@index([name])
+  @@index([categoryId])
+  @@index([expiryDate])
+  @@index([createdAt])
+  @@index([createdById])
+  @@index([createdById, name])
+  @@index([barcode]) // 🔹 NOVO
+}
+
+model Movement {
+  id               String         @id @default(cuid())
+  productId        String
+  type             MovementType
+  quantity         Int
+  reason           String?
+  status           MovementStatus @default(CONCLUIDO)
+  unitPriceInCents Int? // 🔹 NOVO — só ENTRADA
+  supplier         String? // 🔹 NOVO — só ENTRADA
+  fromSectorId     String? // 🔹 NOVO — Fase 8
+  toSectorId       String? // 🔹 NOVO — Fase 8
+  createdById      String
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  createdBy        User           @relation("CreatedBy", fields: [createdById], references: [id])
+  product          Product        @relation(fields: [productId], references: [id])
+  stockHistories   StockHistory[]
+
+  @@index([productId])
+  @@index([createdById])
+  @@index([type])
+  @@index([createdAt])
+  @@index([status])
+  @@index([fromSectorId]) // 🔹 NOVO
+  @@index([toSectorId]) // 🔹 NOVO
+}
+
+model StockHistory {
+  id          String    @id @default(cuid())
+  productId   String
+  oldQuantity Int
+  newQuantity Int
+  movementId  String?
+  changedById String
+  changedAt   DateTime  @default(now())
+  reason      String?
+  changedBy   User      @relation(fields: [changedById], references: [id])
+  movement    Movement? @relation(fields: [movementId], references: [id])
+  product     Product   @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+  @@index([changedById])
+  @@index([changedAt])
+}
+
+model StockAlert {
+  id         String    @id @default(cuid())
+  productId  String
+  alertType  String
+  message    String
+  isResolved Boolean   @default(false)
+  resolvedAt DateTime?
+  resolvedBy String?
+  createdAt  DateTime  @default(now())
+  product    Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([isResolved])
+  @@index([alertType])
+}
+
+model CustomCategory {
+  id          String           @id @default(cuid())
+  name        String           @unique(map: "customcategory_name_key")
+  description String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  createdById String
+  prefix      String           @unique(map: "customcategory_prefix_key")
+  counter     CategoryCounter?
+  createdBy   User             @relation("CategoryCreatedBy", fields: [createdById], references: [id])
+  products    Product[]
+}
+
+model CategoryCounter {
+  categoryId String         @id
+  lastNumber Int            @default(0)
+  updatedAt  DateTime       @updatedAt
+  category   CustomCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+}
+
+model ProductCounter {
+  id         String   @id @default("singleton")
+  lastNumber Int      @default(1000000)
+  updatedAt  DateTime @updatedAt
 }
 
 enum Role {
@@ -24,216 +221,4 @@ enum MovementStatus {
   PENDENTE
   CONCLUIDO
   CANCELADO
-}
-
-// ============== MODELOS PRINCIPAIS ==============
-
-model User {
-  id            String    @id @default(cuid())
-  email         String    @unique(map: "user_email_key")
-  name          String?
-  password      String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  emailVerified Boolean   @default(false)
-  image         String?
-  role          Role      @default(STAFF)
-  isActive      Boolean   @default(true)
-  lastLogin     DateTime?
-
-  // Better Auth
-  accounts      Account[]
-  sessions      Session[]
-  verifications Verification[]
-
-  createdProducts   Product[]        @relation("CreatedBy")
-  updatedProducts   Product[]        @relation("UpdatedBy")
-  createdCategories CustomCategory[] @relation("CategoryCreatedBy")
-  movements         Movement[]       @relation("CreatedBy")
-  stockHistory      StockHistory[]
-
-  @@index([email])
-  @@index([role])
-  @@index([isActive])
-}
-
-// ============== BETTER AUTH TABLES ==============
-
-model Account {
-  id                    String    @id @default(cuid())
-  userId                String
-  accountId             String // ID da conta no provedor (ou userId para credenciais)
-  providerId            String // "email", "google", "github", etc.
-  accessToken           String?   @db.Text
-  refreshToken          String?   @db.Text
-  accessTokenExpiresAt  DateTime?
-  refreshTokenExpiresAt DateTime?
-  scope                 String?
-  idToken               String?   @db.Text
-  password              String? // Senha para autenticação com email/senha
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([providerId, accountId])
-  @@index([userId])
-}
-
-model Session {
-  id        String   @id @default(cuid())
-  userId    String
-  token     String   @unique
-  expiresAt DateTime
-  ipAddress String?
-  userAgent String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-}
-
-model Verification {
-  id         String   @id @default(cuid())
-  identifier String
-  value      String   @db.Text
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  user       User?    @relation(fields: [userId], references: [id])
-  userId     String?
-
-  @@unique([identifier, value])
-}
-
-// ============== Old models ==============
-
-model Product {
-  id          String  @id @default(cuid())
-  name        String
-  sku         String? @unique(map: "product_sku_key")
-  description String?
-  imageUrl    String?
-
-  categoryId String
-  category   CustomCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-
-  priceInCents Int? //  (ex: R$ 19,90 → 1990)
-  // currency  String? @default("BRL")
-
-  quantity Int  @default(0)
-  minStock Int? @default(5)
-  maxStock Int?
-
-  expiryDate  DateTime?
-  batchNumber String?
-
-  location String?
-  supplier String?
-
-  createdById String
-  updatedById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  createdBy    User           @relation("CreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  updatedBy    User?          @relation("UpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
-  movements    Movement[]
-  stockHistory StockHistory[]
-  stockAlerts  StockAlert[]
-
-  @@index([name])
-  @@index([categoryId])
-  @@index([expiryDate])
-  @@index([createdAt])
-  @@index([createdById])
-  @@index([createdById, name])
-}
-
-model Movement {
-  id        String         @id @default(cuid())
-  productId String
-  type      MovementType
-  quantity  Int
-  reason    String?
-  status    MovementStatus @default(CONCLUIDO)
-
-  createdById String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  product        Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
-  createdBy      User           @relation("CreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  stockHistories StockHistory[]
-
-  @@index([productId])
-  @@index([createdById])
-  @@index([type])
-  @@index([createdAt])
-  @@index([status])
-}
-
-model StockHistory {
-  id          String   @id @default(cuid())
-  productId   String
-  oldQuantity Int
-  newQuantity Int
-  movementId  String?
-  changedById String
-  changedAt   DateTime @default(now())
-  reason      String?
-
-  product   Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
-  changedBy User      @relation(fields: [changedById], references: [id], onDelete: Restrict)
-  movement  Movement? @relation(fields: [movementId], references: [id], onDelete: SetNull)
-
-  @@index([productId])
-  @@index([changedById])
-  @@index([changedAt])
-}
-
-model StockAlert {
-  id         String    @id @default(cuid())
-  productId  String
-  alertType  String
-  message    String
-  isResolved Boolean   @default(false)
-  resolvedAt DateTime?
-  resolvedBy String?
-  createdAt  DateTime  @default(now())
-
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@index([productId])
-  @@index([isResolved])
-  @@index([alertType])
-}
-
-model CustomCategory {
-  id          String   @id @default(cuid())
-  name        String   @unique(map: "customcategory_name_key")
-  prefix      String   @unique(map: "customcategory_prefix_key")
-  description String?
-  createdById String
-  createdBy   User     @relation("CategoryCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  products Product[]
-  counter  CategoryCounter?
-}
-
-model CategoryCounter {
-  categoryId String         @id
-  category   CustomCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  lastNumber Int            @default(0)
-  updatedAt  DateTime       @updatedAt
-}
-
-model ProductCounter {
-  id         String   @id @default("singleton")
-  lastNumber Int      @default(1000000)
-  updatedAt  DateTime @updatedAt
 }
