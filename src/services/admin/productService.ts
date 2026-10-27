@@ -474,18 +474,27 @@ export const productService = {
       );
     }
 
-    await prisma.stockHistory.deleteMany({
-      where: { productId, movementId: null },
-    });
+    // Usamos uma transação para garantir consistência e segurança no banco
+    await prisma.$transaction(async (tx) => {
+      // 1. Remove ABSOLUTAMENTE TODO o histórico vinculado a este produto primeiro
+      await tx.stockHistory.deleteMany({
+        where: { productId },
+      });
 
-    await prisma.stockHistory.updateMany({
-      where: { productId, movementId: { not: null } },
-      data: { movementId: null },
-    });
+      // 2. Remove as movimentações e alertas
+      await tx.movement.deleteMany({
+        where: { productId },
+      });
 
-    await prisma.movement.deleteMany({ where: { productId } });
-    await prisma.stockAlert.deleteMany({ where: { productId } });
-    await prisma.product.delete({ where: { id: productId } });
+      await tx.stockAlert.deleteMany({
+        where: { productId },
+      });
+
+      // 3. Agora o produto está 100% livre de chaves estrangeiras e pode ser apagado
+      await tx.product.delete({
+        where: { id: productId },
+      });
+    });
   },
 
   /**
