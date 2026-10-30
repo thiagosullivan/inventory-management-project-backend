@@ -1291,16 +1291,12 @@ export const dashboardService = {
     let totalResolutionTime = 0;
     let resolvedWithTime = 0;
     alerts.forEach((a) => {
-      if (!a.product.category) return;
-      const existing = categoryAlertMap.get(a.product.category.id);
-      if (existing) {
-        if (a.alertType === "LOW_STOCK") {
-          existing.lowStock++;
-        } else if (a.alertType === "EXPIRING_SOON") {
-          existing.expiringSoon++;
-        } else if (a.alertType === "EXPIRED") {
-          existing.expired++;
-        }
+      if (a.isResolved && a.resolvedAt) {
+        const createdAt = new Date(a.createdAt).getTime();
+        const resolvedAt = new Date(a.resolvedAt).getTime();
+        const diffHours = (resolvedAt - createdAt) / (1000 * 60 * 60);
+        totalResolutionTime += diffHours;
+        resolvedWithTime++;
       }
     });
     const averageResolutionTimeHours =
@@ -1509,7 +1505,7 @@ export const dashboardService = {
       { lowStock: number; expiringSoon: number; expired: number }
     >();
 
-    // 🔹 Inicializar com todas as categorias (id → name)
+    // Inicializar com todas as categorias (id → name)
     const allCategories = new Map<string, string>();
     products.forEach((p) => {
       if (p.category) {
@@ -1522,6 +1518,21 @@ export const dashboardService = {
         expiringSoon: 0,
         expired: 0,
       });
+    });
+
+    // 🔹 NOVO — popular o categoryAlertMap (movido da seção 2)
+    alerts.forEach((a) => {
+      if (!a.product.category) return;
+      const existing = categoryAlertMap.get(a.product.category.id);
+      if (existing) {
+        if (a.alertType === "LOW_STOCK") {
+          existing.lowStock++;
+        } else if (a.alertType === "EXPIRING_SOON") {
+          existing.expiringSoon++;
+        } else if (a.alertType === "EXPIRED") {
+          existing.expired++;
+        }
+      }
     });
 
     const byCategory = Array.from(categoryAlertMap.entries())
@@ -1542,8 +1553,8 @@ export const dashboardService = {
 
     // Buscar todos os IDs de usuários que resolveram alertas
     const resolvedByUserIds = alerts
-      .filter((a) => a.resolvedBy)
-      .map((a) => a.resolvedBy as string)
+      .filter((a) => a.resolvedById) // 🔹 era a.resolvedBy
+      .map((a) => a.resolvedById as string) // 🔹 era a.resolvedBy
       .filter((id): id is string => id !== null && id !== undefined);
 
     // Buscar informações dos usuários que resolveram alertas
@@ -1562,7 +1573,7 @@ export const dashboardService = {
     const userMap = new Map(resolvedByUsers.map((u) => [u.id, u]));
 
     const recentAlerts = alerts.slice(0, limit).map((a) => {
-      const user = a.resolvedBy ? userMap.get(a.resolvedBy) : null;
+      const user = a.resolvedById ? userMap.get(a.resolvedById) : null; // 🔹 era a.resolvedBy
 
       return {
         id: a.id,
