@@ -18,7 +18,6 @@ export const authenticate = async (
   next: NextFunction,
 ) => {
   try {
-    // ✅ PASSAR TODOS OS HEADERS DA REQUISIÇÃO (como no outro projeto)
     const session = await auth.api.getSession({
       headers: new Headers(req.headers as Record<string, string>),
     });
@@ -29,10 +28,8 @@ export const authenticate = async (
       });
     }
 
-    // Get user from session
     const userFromSession = session.user;
 
-    // get db infos from that logged user
     const fullUser = await prisma.user.findUnique({
       where: { id: userFromSession.id },
       select: {
@@ -42,6 +39,7 @@ export const authenticate = async (
         role: true,
         emailVerified: true,
         isActive: true,
+        sectorId: true, // 🔹 NOVO — Fase 6
       },
     });
 
@@ -51,7 +49,6 @@ export const authenticate = async (
       });
     }
 
-    // Add user to request
     req.user = {
       id: fullUser.id,
       email: fullUser.email,
@@ -59,6 +56,7 @@ export const authenticate = async (
       role: fullUser.role,
       emailVerified: fullUser.emailVerified || false,
       isActive: true,
+      sectorId: fullUser.sectorId, // 🔹 NOVO
     };
 
     next();
@@ -70,7 +68,6 @@ export const authenticate = async (
   }
 };
 
-// Middleware based on roles
 export const authorize = (...allowedRoles: Role[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {

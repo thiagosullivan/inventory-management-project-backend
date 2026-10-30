@@ -32,6 +32,10 @@ export const auth = betterAuth({
         required: false,
         defaultValue: true,
       },
+      sectorId: {
+        type: "string",
+        required: true, // 🔹 Fase 6 — obrigatório no signUp
+      },
     },
   },
 
