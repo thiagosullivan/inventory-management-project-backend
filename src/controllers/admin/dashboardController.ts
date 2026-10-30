@@ -60,9 +60,9 @@ export const dashboardController = {
       const limit = req.query.limit ? Number(req.query.limit) : 10;
       const categoryId = req.query.categoryId as string;
       const location = req.query.location as string;
-      const locationExact = req.query.locationExact === "true";
+      const locationExact = req.query.locationExact === "true"; // 🔹 já existia
       const supplier = req.query.supplier as string;
-      const supplierExact = req.query.supplierExact === "true";
+      const supplierExact = req.query.supplierExact === "true"; // 🔹 já existia
 
       // Validar parâmetros
       if (limit && (isNaN(limit) || limit < 1)) {
@@ -77,7 +77,9 @@ export const dashboardController = {
         limit,
         categoryId,
         location,
+        locationExact, // 🔹 NOVO — repassar
         supplier,
+        supplierExact, // 🔹 NOVO — repassar
       });
 
       return res.status(200).json({
