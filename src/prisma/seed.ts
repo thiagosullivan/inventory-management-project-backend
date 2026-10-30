@@ -6,6 +6,8 @@ import {
   Role,
   MovementType,
   MovementStatus,
+  TransferStatus,
+  PurchaseRequestStatus,
 } from "../generated/prisma/client.js";
 import { auth } from "../lib/auth.js";
 import { generatePrefix } from "../utils/generate-prefix.js";
@@ -20,9 +22,60 @@ async function main() {
   console.log("✅ Conectado ao NeonDB");
 
   // ============================================
-  // 1. USUÁRIO MANAGER
+  // 1. SETORES (🔹 NOVO — cria ANTES dos usuários)
   // ============================================
-  console.log("\n👤 Criando usuário MANAGER...");
+  console.log("\n🏢 Criando setores...");
+
+  const sectorsData = [
+    {
+      name: "Almoxarifado",
+      description: "Setor central — único com estoque",
+      isWarehouse: true,
+    },
+    {
+      name: "Cozinha",
+      description: "Setor de alimentação",
+      isWarehouse: false,
+    },
+    {
+      name: "Escola",
+      description: "Setor escolar",
+      isWarehouse: false,
+    },
+  ];
+
+  const sectorMap = new Map<string, string>(); // name → id
+
+  for (const data of sectorsData) {
+    const existing = await prisma.sector.findUnique({
+      where: { name: data.name },
+    });
+
+    if (existing) {
+      sectorMap.set(data.name, existing.id);
+      console.log(`   ℹ️ Setor já existe: ${data.name} (id: ${existing.id})`);
+      continue;
+    }
+
+    const sector = await prisma.sector.create({ data });
+    sectorMap.set(data.name, sector.id);
+    console.log(
+      `   ✅ Setor criado: ${data.name} (isWarehouse: ${data.isWarehouse}, id: ${sector.id})`,
+    );
+  }
+
+  const sectorId = (name: string): string => {
+    const id = sectorMap.get(name);
+    if (!id) throw new Error(`Setor não encontrado no map: ${name}`);
+    return id;
+  };
+
+  // ============================================
+  // 2. USUÁRIOS (MANAGER master + 3 STAFF, um por setor)
+  // ============================================
+  console.log("\n👤 Criando usuários...");
+
+  // 2.1 MANAGER master (Almoxarifado)
   const managerEmail = "admin@estoque.com";
   let admin = await prisma.user.findUnique({ where: { email: managerEmail } });
 
@@ -33,20 +86,26 @@ async function main() {
           email: managerEmail,
           password: "Admin@123",
           name: "Administrador",
-          image:
-            "https://ui-avatars.com/api/?name=Admin&background=1a73e8&color=fff&size=128",
+          image: "...",
+          sectorId: sectorId("Almoxarifado"),
         },
       });
-      console.log("✅ Resposta do Better Auth:", response);
+      console.log("✅ Resposta do Better Auth (MANAGER):", response);
 
       admin = await prisma.user.findUnique({ where: { email: managerEmail } });
       if (admin) {
         admin = await prisma.user.update({
           where: { id: admin.id },
-          data: { role: Role.MANAGER, isActive: true },
+          data: {
+            role: Role.MANAGER,
+            isActive: true,
+            sectorId: sectorId("Almoxarifado"),
+          },
         });
       }
-      console.log(`✅ MANAGER: ${admin?.email} / Admin@123 (id: ${admin?.id})`);
+      console.log(
+        `✅ MANAGER: ${admin?.email} / Admin@123 (setor: Almoxarifado, id: ${admin?.id})`,
+      );
     } catch (error: any) {
       console.error("❌ Erro ao criar MANAGER:", error);
       throw error;
@@ -57,38 +116,131 @@ async function main() {
 
   if (!admin) throw new Error("Admin não encontrado após criação!");
 
-  // ============================================
-  // 2. USUÁRIO STAFF
-  // ============================================
-  console.log("\n👤 Criando usuário STAFF...");
-  const staffEmail = "funcionario@estoque.com";
-  let staff = await prisma.user.findUnique({ where: { email: staffEmail } });
+  // 2.2 STAFF do Almoxarifado
+  const staffAlmoxEmail = "almoxarife@estoque.com";
+  let staffAlmox = await prisma.user.findUnique({
+    where: { email: staffAlmoxEmail },
+  });
 
-  if (!staff) {
+  if (!staffAlmox) {
     try {
       await auth.api.signUpEmail({
         body: {
-          email: staffEmail,
+          email: staffAlmoxEmail,
           password: "Staff@123",
-          name: "Funcionário Teste",
-          image:
-            "https://ui-avatars.com/api/?name=Staff&background=f57c00&color=fff&size=128",
+          name: "Almoxarife Teste",
+          image: "...",
+          sectorId: sectorId("Almoxarifado"), // 🔹 NOVO
         },
       });
-      staff = await prisma.user.findUnique({ where: { email: staffEmail } });
-      if (staff) {
-        staff = await prisma.user.update({
-          where: { id: staff.id },
-          data: { role: Role.STAFF, isActive: true },
+      staffAlmox = await prisma.user.findUnique({
+        where: { email: staffAlmoxEmail },
+      });
+      if (staffAlmox) {
+        staffAlmox = await prisma.user.update({
+          where: { id: staffAlmox.id },
+          data: {
+            role: Role.STAFF,
+            isActive: true,
+            sectorId: sectorId("Almoxarifado"),
+          },
         });
       }
-      console.log(`✅ STAFF: ${staff?.email} / Staff@123 (id: ${staff?.id})`);
+      console.log(
+        `✅ STAFF Almoxarifado: ${staffAlmox?.email} / Staff@123 (id: ${staffAlmox?.id})`,
+      );
     } catch (error: any) {
-      console.error("❌ Erro ao criar STAFF:", error);
+      console.error("❌ Erro ao criar STAFF Almoxarifado:", error);
       throw error;
     }
   } else {
-    console.log(`ℹ️ STAFF já existe (id: ${staff.id})`);
+    console.log(`ℹ️ STAFF Almoxarifado já existe (id: ${staffAlmox.id})`);
+  }
+
+  // 2.3 STAFF da Cozinha
+  const staffCozinhaEmail = "cozinha@estoque.com";
+  let staffCozinha = await prisma.user.findUnique({
+    where: { email: staffCozinhaEmail },
+  });
+
+  if (!staffCozinha) {
+    try {
+      await auth.api.signUpEmail({
+        body: {
+          email: staffCozinhaEmail,
+          password: "Staff@123",
+          name: "Cozinheira Teste",
+          image: "...",
+          sectorId: sectorId("Cozinha"), // 🔹 NOVO
+        },
+      });
+      staffCozinha = await prisma.user.findUnique({
+        where: { email: staffCozinhaEmail },
+      });
+      if (staffCozinha) {
+        staffCozinha = await prisma.user.update({
+          where: { id: staffCozinha.id },
+          data: {
+            role: Role.STAFF,
+            isActive: true,
+            sectorId: sectorId("Cozinha"),
+          },
+        });
+      }
+      console.log(
+        `✅ STAFF Cozinha: ${staffCozinha?.email} / Staff@123 (id: ${staffCozinha?.id})`,
+      );
+    } catch (error: any) {
+      console.error("❌ Erro ao criar STAFF Cozinha:", error);
+      throw error;
+    }
+  } else {
+    console.log(`ℹ️ STAFF Cozinha já existe (id: ${staffCozinha.id})`);
+  }
+
+  // 2.4 STAFF da Escola
+  const staffEscolaEmail = "escola@estoque.com";
+  let staffEscola = await prisma.user.findUnique({
+    where: { email: staffEscolaEmail },
+  });
+
+  if (!staffEscola) {
+    try {
+      await auth.api.signUpEmail({
+        body: {
+          email: staffEscolaEmail,
+          password: "Staff@123",
+          name: "Escola Teste",
+          image: "...",
+          sectorId: sectorId("Escola"), // 🔹 NOVO
+        },
+      });
+      staffEscola = await prisma.user.findUnique({
+        where: { email: staffEscolaEmail },
+      });
+      if (staffEscola) {
+        staffEscola = await prisma.user.update({
+          where: { id: staffEscola.id },
+          data: {
+            role: Role.STAFF,
+            isActive: true,
+            sectorId: sectorId("Escola"),
+          },
+        });
+      }
+      console.log(
+        `✅ STAFF Escola: ${staffEscola?.email} / Staff@123 (id: ${staffEscola?.id})`,
+      );
+    } catch (error: any) {
+      console.error("❌ Erro ao criar STAFF Escola:", error);
+      throw error;
+    }
+  } else {
+    console.log(`ℹ️ STAFF Escola já existe (id: ${staffEscola.id})`);
+  }
+
+  if (!staffAlmox || !staffCozinha || !staffEscola) {
+    throw new Error("Algum STAFF não foi criado/encontrado!");
   }
 
   // ============================================
@@ -96,7 +248,6 @@ async function main() {
   // ============================================
   console.log("\n📂 Criando categorias base...");
   const categoryNames = [
-    "Almoxarifado",
     "Alimentos",
     "Limpeza",
     "Escritório",
@@ -129,7 +280,7 @@ async function main() {
 
     const category = await prisma.$transaction(async (tx) => {
       const created = await tx.customCategory.create({
-        data: { name, prefix, createdById: admin.id },
+        data: { name, prefix, createdById: admin!.id },
       });
       await tx.categoryCounter.create({
         data: { categoryId: created.id, lastNumber: 0 },
@@ -296,6 +447,7 @@ async function main() {
   ];
 
   let createdCount = 0;
+  const productIdBySku = new Map<string, string>();
 
   for (const productData of products) {
     const existingProduct = await prisma.product.findUnique({
@@ -303,16 +455,17 @@ async function main() {
     });
 
     if (existingProduct) {
+      productIdBySku.set(productData.sku, existingProduct.id);
       console.log(
         `   ℹ️ Produto já existe: ${productData.name} (SKU: ${productData.sku})`,
       );
       continue;
     }
 
-    await prisma.$transaction(async (tx) => {
-      const created = await tx.product.create({
+    const created = await prisma.$transaction(async (tx) => {
+      const product = await tx.product.create({
         data: {
-          createdById: admin.id,
+          createdById: admin!.id,
           name: productData.name,
           sku: productData.sku,
           barcode: productData.barcode,
@@ -329,44 +482,47 @@ async function main() {
         },
       });
 
-      // Movement de ENTRADA inicial
-      if (created.quantity > 0) {
+      // Movement de ENTRADA inicial (só se quantity > 0)
+      if (product.quantity > 0) {
         const movement = await tx.movement.create({
           data: {
-            productId: created.id,
+            productId: product.id,
             type: MovementType.ENTRADA,
-            quantity: created.quantity,
+            quantity: product.quantity,
             reason: "Entrada inicial (seed)",
             status: MovementStatus.CONCLUIDO,
             unitPriceInCents: productData.priceInCents,
             supplier: productData.supplier,
-            createdById: admin.id,
+            createdById: admin!.id,
           },
         });
 
         await tx.stockHistory.create({
           data: {
-            productId: created.id,
+            productId: product.id,
             oldQuantity: 0,
-            newQuantity: created.quantity,
+            newQuantity: product.quantity,
             movementId: movement.id,
-            changedById: admin.id,
+            changedById: admin!.id,
             reason: "Criação do produto",
           },
         });
       } else {
         await tx.stockHistory.create({
           data: {
-            productId: created.id,
+            productId: product.id,
             oldQuantity: 0,
             newQuantity: 0,
-            changedById: admin.id,
+            changedById: admin!.id,
             reason: "Criação do produto",
           },
         });
       }
+
+      return product;
     });
 
+    productIdBySku.set(productData.sku, created.id);
     createdCount++;
     console.log(
       `   ✅ Produto criado: ${productData.name} (SKU: ${productData.sku}, barcode: ${productData.barcode})`,
@@ -420,15 +576,186 @@ async function main() {
   console.log(`   ✅ ProductCounter: lastNumber = ${maxBarcode}`);
 
   // ============================================
-  // 5. RESUMO
+  // 5. PEDIDO DE EXEMPLO (PurchaseRequest PENDENTE da Cozinha)
+  // ============================================
+  console.log("\n📝 Criando pedido de exemplo (Cozinha)...");
+
+  const existingRequest = await prisma.purchaseRequest.findFirst({
+    where: {
+      sectorId: sectorId("Cozinha"),
+      status: PurchaseRequestStatus.PENDENTE,
+    },
+  });
+
+  let sampleRequest;
+  if (existingRequest) {
+    sampleRequest = existingRequest;
+    console.log(`   ℹ️ Pedido PENDENTE já existe (id: ${existingRequest.id})`);
+  } else {
+    // Pega 2 produtos pra compor o pedido (detergente + água sanitária — itens de limpeza, típicos de cozinha)
+    const detergenteId = productIdBySku.get("LIM-001"); // Detergente
+    const aguaSanitariaId = productIdBySku.get("LIM-002"); // Água Sanitária
+
+    if (!detergenteId || !aguaSanitariaId) {
+      throw new Error("Produtos de exemplo não encontrados para o pedido");
+    }
+
+    sampleRequest = await prisma.purchaseRequest.create({
+      data: {
+        sectorId: sectorId("Cozinha"),
+        status: PurchaseRequestStatus.PENDENTE,
+        notes: "Precisamos também de 2 vassouras (não cadastradas no sistema).",
+        createdById: staffCozinha.id,
+        items: {
+          create: [
+            { productId: detergenteId, quantity: 10 },
+            { productId: aguaSanitariaId, quantity: 5 },
+          ],
+        },
+      },
+    });
+
+    console.log(
+      `   ✅ Pedido criado: ${sampleRequest.id} (Cozinha, PENDENTE, 2 itens)`,
+    );
+  }
+
+  // ============================================
+  // 6. REMESSA DE EXEMPLO (Transfer do Almoxarifado pra Cozinha)
+  // ============================================
+  console.log("\n🚚 Criando remessa de exemplo (Almoxarifado → Cozinha)...");
+
+  const existingTransfer = await prisma.transfer.findFirst({
+    where: {
+      toSectorId: sectorId("Cozinha"),
+      status: TransferStatus.PENDENTE,
+    },
+  });
+
+  if (existingTransfer) {
+    console.log(
+      `   ℹ️ Remessa PENDENTE já existe (id: ${existingTransfer.id})`,
+    );
+  } else {
+    const papelA4Id = productIdBySku.get("ESC-001"); // Papel A4
+    const canetaId = productIdBySku.get("ESC-003"); // Caneta
+
+    if (!papelA4Id || !canetaId) {
+      throw new Error("Produtos de exemplo não encontrados para a remessa");
+    }
+
+    // Produtos que vão na remessa (qtds que serão debitadas do estoque do Almoxarifado)
+    const transferItems = [
+      { productId: papelA4Id, quantity: 20 },
+      { productId: canetaId, quantity: 50 },
+    ];
+
+    // 🔹 Transação atômica: cria Transfer + TransferItem + Movement (TRANSFERENCIA, PENDENTE) + StockHistory + debita Product.quantity
+    const transfer = await prisma.$transaction(async (tx) => {
+      // 1. Criar Transfer (header)
+      const created = await tx.transfer.create({
+        data: {
+          fromSectorId: sectorId("Almoxarifado"),
+          toSectorId: sectorId("Cozinha"),
+          purchaseRequestId: null, // remessa avulsa (não vinculada ao pedido de exemplo)
+          status: TransferStatus.PENDENTE,
+          reason: "Remessa de exemplo (seed)",
+          createdById: staffAlmox.id,
+          items: {
+            create: transferItems.map((i) => ({
+              productId: i.productId,
+              quantity: i.quantity,
+            })),
+          },
+        },
+      });
+
+      // 2. Para cada item: debita Product.quantity + cria Movement (TRANSFERENCIA, PENDENTE, quantity negativo) + StockHistory vinculado
+      for (const item of transferItems) {
+        const product = await tx.product.findUnique({
+          where: { id: item.productId },
+          select: { quantity: true, avgPriceInCents: true },
+        });
+        if (!product) {
+          throw new Error(`Produto não encontrado: ${item.productId}`);
+        }
+        if (product.quantity < item.quantity) {
+          throw new Error(
+            `Estoque insuficiente para ${item.productId}: disponível ${product.quantity}, solicitado ${item.quantity}`,
+          );
+        }
+
+        // 2.1 Criar Movement de TRANSFERENCIA (PENDENTE, quantity negativo)
+        const movement = await tx.movement.create({
+          data: {
+            productId: item.productId,
+            type: MovementType.TRANSFERENCIA,
+            quantity: -item.quantity, // 🔹 negativo (saída do Almoxarifado)
+            reason: "Remessa de exemplo (seed)",
+            status: MovementStatus.PENDENTE,
+            fromSectorId: sectorId("Almoxarifado"),
+            toSectorId: sectorId("Cozinha"),
+            transferId: created.id,
+            // 🔹 herda avgPriceInCents do produto no momento (regra do .md)
+            unitPriceInCents: product.avgPriceInCents,
+            createdById: staffAlmox.id,
+          },
+        });
+
+        // 2.2 Debitar Product.quantity
+        const newQuantity = product.quantity - item.quantity;
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { quantity: newQuantity },
+        });
+
+        // 2.3 StockHistory vinculado ao Movement (🔹 NOVO — antes não era criado)
+        await tx.stockHistory.create({
+          data: {
+            productId: item.productId,
+            oldQuantity: product.quantity,
+            newQuantity,
+            movementId: movement.id,
+            changedById: staffAlmox.id,
+            reason: `Transferência para Cozinha (remessa ${created.id})`,
+          },
+        });
+      }
+
+      return created;
+    });
+
+    console.log(
+      `   ✅ Remessa criada: ${transfer.id} (Almoxarifado → Cozinha, PENDENTE, 2 itens)`,
+    );
+    console.log(
+      `      💡 Estoque debitado: Papel A4 -20, Caneta -50. Confirme/recuse via UI pra testar o fluxo.`,
+    );
+    console.log(
+      `      📜 StockHistory criado e vinculado aos 2 Movements (auditoria consistente).`,
+    );
+  }
+
+  // ============================================
+  // 7. RESUMO
   // ============================================
   console.log("\n📊 ===== RESUMO =====");
-  console.log(`📂 Categorias: ${categoryNames.length}`);
+  console.log(`🏢 Setores: ${sectorsData.length}`);
+  console.log(`   - Almoxarifado (isWarehouse: true)`);
+  console.log(`   - Cozinha (isWarehouse: false)`);
+  console.log(`   - Escola (isWarehouse: false)`);
   console.log(`👤 Usuários:`);
-  console.log(`   - MANAGER: admin@estoque.com / Admin@123`);
-  console.log(`   - STAFF: funcionario@estoque.com / Staff@123`);
+  console.log(`   - MANAGER: admin@estoque.com / Admin@123 (Almoxarifado)`);
+  console.log(`   - STAFF: almoxarife@estoque.com / Staff@123 (Almoxarifado)`);
+  console.log(`   - STAFF: cozinha@estoque.com / Staff@123 (Cozinha)`);
+  console.log(`   - STAFF: escola@estoque.com / Staff@123 (Escola)`);
+  console.log(`📂 Categorias: ${categoryNames.length}`);
   console.log(`📦 Produtos criados: ${createdCount}`);
   console.log(`📦 Produtos existentes: ${products.length - createdCount}`);
+  console.log(`📝 Pedido de exemplo: ${sampleRequest.id} (Cozinha, PENDENTE)`);
+  console.log(
+    `🚚 Remessa de exemplo: criada (Almoxarifado → Cozinha, PENDENTE)`,
+  );
   console.log("\n✅ Seed concluído com sucesso!");
 }
 
