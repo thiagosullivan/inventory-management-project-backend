@@ -7,6 +7,12 @@ import dashboardRouter from "./admin/dashboardRoutes.js";
 import exportRouter from "./admin/exportRoutes.js";
 import userOptionsRouter from "./admin/userOptionsRoutes";
 
+// 🔹 NOVO — Fase 6
+import sectorRouter from "./admin/sectorRoutes.js";
+import transferRouter from "./admin/transferRoutes.js";
+import purchaseRequestRouter from "./admin/purchaseRequestRoutes.js";
+import movementRouter from "./admin/movementRoutes.js";
+
 const router = express.Router();
 
 // Authentication routes
@@ -29,6 +35,12 @@ router.use("/admin", dashboardRouter);
 
 // Export routes
 router.use("/admin", exportRouter);
+
+// 🔹 NOVO — Fase 6
+router.use("/admin", sectorRouter);
+router.use("/admin", transferRouter);
+router.use("/admin", purchaseRequestRouter);
+router.use("/admin", movementRouter);
 
 // Health check
 router.get("/health", async (req, res) => {
