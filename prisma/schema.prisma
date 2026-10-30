@@ -7,31 +7,92 @@ datasource db {
   provider = "postgresql"
 }
 
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum Role {
+  MANAGER
+  STAFF
+}
+
+enum MovementType {
+  ENTRADA
+  SAIDA
+  AJUSTE
+  TRANSFERENCIA // 🔹 usado pelas remessas (Transfer)
+}
+
+enum MovementStatus {
+  PENDENTE
+  CONCLUIDO
+  CANCELADO
+}
+
+// 🔹 NOVO — status da remessa
+enum TransferStatus {
+  PENDENTE
+  CONCLUIDO
+  CANCELADO
+  RECUSADO // 🔹 era REJEITADO
+}
+
+// 🔹 NOVO — status do pedido
+enum PurchaseRequestStatus {
+  PENDENTE
+  EM_ATENDIMENTO
+  ATENDIDO
+  RECUSADO
+  CANCELADO
+}
+
+// ============================================================
+// AUTH (Better Auth) — User, Account, Session, Verification
+// ============================================================
+
 model User {
-  id                String           @id @default(cuid())
-  email             String           @unique(map: "user_email_key")
-  name              String?
-  password          String?
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  image             String?
-  role              Role             @default(STAFF)
-  isActive          Boolean          @default(true)
-  lastLogin         DateTime?
-  emailVerified     Boolean          @default(false)
-  sectorId          String? // 🔹 NOVO — nullable, Fase 8 preenche
+  id            String    @id @default(cuid())
+  email         String    @unique(map: "user_email_key")
+  name          String?
+  password      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  image         String?
+  role          Role      @default(STAFF)
+  isActive      Boolean   @default(true)
+  lastLogin     DateTime?
+  emailVerified Boolean   @default(false)
+
+  // 🔹 NOVO — obrigatório na Fase 6 (banco dropado e recriado; seed cria setores antes)
+  sectorId String
+  sector   Sector @relation(fields: [sectorId], references: [id], onDelete: Restrict)
+
+  // Relações reversas
   accounts          Account[]
+  sessions          Session[]
+  verifications     Verification[]
   createdCategories CustomCategory[] @relation("CategoryCreatedBy")
-  movements         Movement[]       @relation("CreatedBy")
   createdProducts   Product[]        @relation("CreatedBy")
   updatedProducts   Product[]        @relation("UpdatedBy")
-  sessions          Session[]
+  movements         Movement[]       @relation("CreatedBy")
   stockHistory      StockHistory[]
-  verifications     Verification[]
+  resolvedAlerts    StockAlert[]     @relation("AlertResolvedBy") // 🔹 NOVO (relação FK)
+
+  // 🔹 NOVO — Transfer
+  createdTransfers   Transfer[] @relation("TransferCreatedBy")
+  confirmedTransfers Transfer[] @relation("TransferConfirmedBy")
+  refusedTransfers   Transfer[] @relation("TransferRefusedBy")
+  cancelledTransfers Transfer[] @relation("TransferCancelledBy")
+
+  // 🔹 NOVO — PurchaseRequest
+  createdRequests   PurchaseRequest[] @relation("RequestCreatedBy")
+  finalizedRequests PurchaseRequest[] @relation("RequestFinalizedBy")
+  refusedRequests   PurchaseRequest[] @relation("RequestRefusedBy")
 
   @@index([email])
   @@index([role])
   @@index([isActive])
+  @@index([sectorId]) // 🔹 NOVO
 }
 
 model Account {
@@ -81,103 +142,33 @@ model Verification {
   @@unique([identifier, value])
 }
 
-model Product {
-  id              String         @id @default(cuid())
-  name            String
-  sku             String         @unique(map: "product_sku_key") // 🔹 era String?
-  barcode         String         @unique(map: "product_barcode_key") // 🔹 NOVO
-  description     String?
-  quantity        Int            @default(0)
-  minStock        Int?           @default(5)
-  maxStock        Int?
-  expiryDate      DateTime?
-  batchNumber     String?
-  location        String?
-  supplier        String?
-  createdById     String
-  updatedById     String?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  categoryId      String
-  imageUrl        String?
-  priceInCents    Int? // último preço de compra (cache)
-  avgPriceInCents Int? // 🔹 NOVO — média ponderada móvel
-  movements       Movement[]
-  category        CustomCategory @relation(fields: [categoryId], references: [id])
-  createdBy       User           @relation("CreatedBy", fields: [createdById], references: [id])
-  updatedBy       User?          @relation("UpdatedBy", fields: [updatedById], references: [id])
-  stockAlerts     StockAlert[]
-  stockHistory    StockHistory[]
+// ============================================================
+// SETOR (🔹 NOVO)
+// ============================================================
 
-  @@index([name])
-  @@index([categoryId])
-  @@index([expiryDate])
-  @@index([createdAt])
-  @@index([createdById])
-  @@index([createdById, name])
-  @@index([barcode]) // 🔹 NOVO
+model Sector {
+  id          String   @id @default(cuid())
+  name        String   @unique(map: "sector_name_key")
+  description String?
+  isWarehouse Boolean  @default(false) // 🔹 exatamente 1 true (Almoxarifado), imutável
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relações reversas
+  users            User[]
+  movementsFrom    Movement[]        @relation("MovementFromSector")
+  movementsTo      Movement[]        @relation("MovementToSector")
+  transfersFrom    Transfer[]        @relation("TransferFromSector")
+  transfersTo      Transfer[]        @relation("TransferToSector")
+  purchaseRequests PurchaseRequest[] @relation("RequestSector")
+
+  @@index([isWarehouse])
 }
 
-model Movement {
-  id               String         @id @default(cuid())
-  productId        String
-  type             MovementType
-  quantity         Int
-  reason           String?
-  status           MovementStatus @default(CONCLUIDO)
-  unitPriceInCents Int? // 🔹 NOVO — só ENTRADA
-  supplier         String? // 🔹 NOVO — só ENTRADA
-  fromSectorId     String? // 🔹 NOVO — Fase 8
-  toSectorId       String? // 🔹 NOVO — Fase 8
-  createdById      String
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  createdBy        User           @relation("CreatedBy", fields: [createdById], references: [id])
-  product          Product        @relation(fields: [productId], references: [id])
-  stockHistories   StockHistory[]
-
-  @@index([productId])
-  @@index([createdById])
-  @@index([type])
-  @@index([createdAt])
-  @@index([status])
-  @@index([fromSectorId]) // 🔹 NOVO
-  @@index([toSectorId]) // 🔹 NOVO
-}
-
-model StockHistory {
-  id          String    @id @default(cuid())
-  productId   String
-  oldQuantity Int
-  newQuantity Int
-  movementId  String?
-  changedById String
-  changedAt   DateTime  @default(now())
-  reason      String?
-  changedBy   User      @relation(fields: [changedById], references: [id])
-  movement    Movement? @relation(fields: [movementId], references: [id])
-  product     Product   @relation(fields: [productId], references: [id])
-
-  @@index([productId])
-  @@index([changedById])
-  @@index([changedAt])
-}
-
-model StockAlert {
-  id         String    @id @default(cuid())
-  productId  String
-  alertType  String
-  message    String
-  isResolved Boolean   @default(false)
-  resolvedAt DateTime?
-  resolvedBy String?
-  createdAt  DateTime  @default(now())
-  product    Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@index([productId])
-  @@index([isResolved])
-  @@index([alertType])
-}
+// ============================================================
+// CATEGORIA + COUNTERS
+// ============================================================
 
 model CustomCategory {
   id          String           @id @default(cuid())
@@ -188,8 +179,10 @@ model CustomCategory {
   createdById String
   prefix      String           @unique(map: "customcategory_prefix_key")
   counter     CategoryCounter?
-  createdBy   User             @relation("CategoryCreatedBy", fields: [createdById], references: [id])
+  createdBy   User             @relation("CategoryCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   products    Product[]
+
+  @@index([createdById])
 }
 
 model CategoryCounter {
@@ -205,20 +198,235 @@ model ProductCounter {
   updatedAt  DateTime @updatedAt
 }
 
-enum Role {
-  MANAGER
-  STAFF
+// ============================================================
+// PRODUTO
+// ============================================================
+
+model Product {
+  id              String    @id @default(cuid())
+  name            String
+  sku             String    @unique(map: "product_sku_key")
+  barcode         String    @unique(map: "product_barcode_key")
+  description     String?
+  quantity        Int       @default(0) // 🔹 estoque do Almoxarifado (ponto 0)
+  minStock        Int?      @default(5)
+  maxStock        Int?
+  expiryDate      DateTime?
+  batchNumber     String?
+  location        String?
+  supplier        String?
+  createdById     String
+  updatedById     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  categoryId      String
+  imageUrl        String?
+  priceInCents    Int? // último preço de compra (cache)
+  avgPriceInCents Int? // média ponderada móvel
+
+  // Relações
+  category     CustomCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  createdBy    User           @relation("CreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy    User?          @relation("UpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  movements    Movement[]
+  stockAlerts  StockAlert[]
+  stockHistory StockHistory[]
+
+  // 🔹 NOVO — Fase 6
+  requestItems  PurchaseRequestItem[]
+  transferItems TransferItem[]
+
+  @@index([name])
+  @@index([categoryId])
+  @@index([expiryDate])
+  @@index([createdAt])
+  @@index([createdById])
+  @@index([createdById, name])
+  @@index([barcode])
 }
 
-enum MovementType {
-  ENTRADA
-  SAIDA
-  AJUSTE
-  TRANSFERENCIA
+// ============================================================
+// MOVIMENTAÇÃO
+// ============================================================
+
+model Movement {
+  id               String         @id @default(cuid())
+  productId        String
+  type             MovementType
+  quantity         Int // 🔹 em TRANSFERENCIA, é negativo (saída do Almoxarifado)
+  reason           String?
+  status           MovementStatus @default(CONCLUIDO)
+  unitPriceInCents Int? // só ENTRADA
+  supplier         String? // só ENTRADA
+
+  // 🔹 NOVO — Fase 6 (só TRANSFERENCIA preenche)
+  fromSectorId String?
+  toSectorId   String?
+  transferId   String?
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relações
+  product        Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  createdBy      User           @relation("CreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  fromSector     Sector?        @relation("MovementFromSector", fields: [fromSectorId], references: [id], onDelete: SetNull)
+  toSector       Sector?        @relation("MovementToSector", fields: [toSectorId], references: [id], onDelete: SetNull)
+  transfer       Transfer?      @relation(fields: [transferId], references: [id], onDelete: SetNull)
+  stockHistories StockHistory[]
+
+  @@index([productId])
+  @@index([createdById])
+  @@index([type])
+  @@index([createdAt])
+  @@index([status])
+  @@index([fromSectorId])
+  @@index([toSectorId])
+  @@index([transferId])
 }
 
-enum MovementStatus {
-  PENDENTE
-  CONCLUIDO
-  CANCELADO
+// ============================================================
+// HISTÓRICO DE ESTOQUE
+// ============================================================
+
+model StockHistory {
+  id          String    @id @default(cuid())
+  productId   String
+  oldQuantity Int
+  newQuantity Int
+  movementId  String?
+  changedById String
+  changedAt   DateTime  @default(now())
+  reason      String?
+  changedBy   User      @relation(fields: [changedById], references: [id], onDelete: Restrict)
+  movement    Movement? @relation(fields: [movementId], references: [id], onDelete: SetNull)
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([productId])
+  @@index([changedById])
+  @@index([changedAt])
+}
+
+// ============================================================
+// ALERTAS
+// ============================================================
+
+model StockAlert {
+  id           String    @id @default(cuid())
+  productId    String
+  alertType    String
+  message      String
+  isResolved   Boolean   @default(false)
+  resolvedAt   DateTime?
+  // 🔹 ALTERADO — era String? solto; agora FK pra User
+  resolvedById String?
+  createdAt    DateTime  @default(now())
+
+  product    Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  resolvedBy User?   @relation("AlertResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([productId])
+  @@index([isResolved])
+  @@index([alertType])
+}
+
+// ============================================================
+// TRANSFER (remessa) — 🔹 NOVO
+// ============================================================
+
+model Transfer {
+  id                String         @id @default(cuid())
+  fromSectorId      String // 🔹 sempre o Almoxarifado (forçado no backend)
+  toSectorId        String
+  purchaseRequestId String? // 🔹 vínculo opcional com pedido
+  status            TransferStatus @default(PENDENTE)
+  reason            String?
+  cancelReason      String? // 🔹 obrigatório quando CANCELADO (auditoria)
+
+  createdById   String
+  confirmedById String?
+  refusedById   String? // 🔹 era rejectedById
+  cancelledById String? // 🔹 NOVO
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  confirmedAt DateTime?
+  refusedAt   DateTime? // 🔹 era rejectedAt
+  cancelledAt DateTime? // 🔹 NOVO
+
+  // Relações
+  fromSector      Sector           @relation("TransferFromSector", fields: [fromSectorId], references: [id], onDelete: Restrict)
+  toSector        Sector           @relation("TransferToSector", fields: [toSectorId], references: [id], onDelete: Restrict)
+  purchaseRequest PurchaseRequest? @relation(fields: [purchaseRequestId], references: [id], onDelete: SetNull)
+  createdBy       User             @relation("TransferCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  confirmedBy     User?            @relation("TransferConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
+  refusedBy       User?            @relation("TransferRefusedBy", fields: [refusedById], references: [id], onDelete: SetNull)
+  cancelledBy     User?            @relation("TransferCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  items           TransferItem[]
+  movements       Movement[]
+
+  @@index([fromSectorId])
+  @@index([toSectorId])
+  @@index([purchaseRequestId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model TransferItem {
+  id         String   @id @default(cuid())
+  transferId String
+  productId  String
+  quantity   Int
+  transfer   Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([transferId])
+  @@index([productId])
+}
+
+// ============================================================
+// PURCHASE REQUEST (pedido) — 🔹 NOVO
+// ============================================================
+
+model PurchaseRequest {
+  id            String                @id @default(cuid())
+  sectorId      String // setor que pediu (não-Almoxarifado)
+  status        PurchaseRequestStatus @default(PENDENTE)
+  notes         String? // textarea livre (itens não cadastrados) — setor criador
+  refusalReason String? // obrigatório quando RECUSADO — Almoxarifado
+  finalizeNote  String? // 🔹 obrigatório quando há Transfer RECUSADO/CANCELADO
+
+  createdById   String
+  finalizedById String?
+  refusedById   String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  finalizedAt DateTime?
+  refusedAt   DateTime?
+
+  // Relações
+  sector      Sector                @relation("RequestSector", fields: [sectorId], references: [id], onDelete: Restrict)
+  createdBy   User                  @relation("RequestCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  finalizedBy User?                 @relation("RequestFinalizedBy", fields: [finalizedById], references: [id], onDelete: SetNull)
+  refusedBy   User?                 @relation("RequestRefusedBy", fields: [refusedById], references: [id], onDelete: SetNull)
+  items       PurchaseRequestItem[]
+  transfers   Transfer[]
+
+  @@index([sectorId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model PurchaseRequestItem {
+  id        String          @id @default(cuid())
+  requestId String
+  productId String // sempre produto cadastrado (extra vai no notes)
+  quantity  Int
+  request   PurchaseRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([requestId])
+  @@index([productId])
 }
