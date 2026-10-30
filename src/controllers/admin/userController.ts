@@ -1,7 +1,11 @@
+// src/controllers/admin/userController.ts
 import { Request, Response } from "express";
 import { Role } from "../../generated/prisma/enums.js";
 import { userService } from "../../services/admin/userService.js";
-import { CreateStaffUserData } from "../../types/user.types.js";
+import {
+  CreateStaffUserData,
+  UpdateUserSectorData,
+} from "../../types/user.types.js";
 
 export const userController = {
   /**
@@ -19,7 +23,7 @@ export const userController = {
         });
       }
 
-      const { email, password, name, role, image } = req.body;
+      const { email, password, name, role, image, sectorId } = req.body;
 
       // Validação de campos obrigatórios (controller)
       if (!email || !password || !name) {
@@ -27,6 +31,15 @@ export const userController = {
           success: false,
           message: "Email, senha e nome são obrigatórios",
           code: "MISSING_FIELDS",
+        });
+      }
+
+      // 🔹 NOVO — sectorId obrigatório
+      if (!sectorId) {
+        return res.status(400).json({
+          success: false,
+          message: "Setor é obrigatório",
+          code: "MISSING_SECTOR",
         });
       }
 
@@ -38,6 +51,7 @@ export const userController = {
         image:
           image ||
           `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=1a73e8&color=fff&size=128`,
+        sectorId, // 🔹 NOVO
       };
 
       const userResponse = await userService.createStaffUser(data, adminId);
@@ -55,6 +69,22 @@ export const userController = {
           success: false,
           message: error.message,
           code: "EMAIL_ALREADY_EXISTS",
+        });
+      }
+
+      if (error.message.includes("Setor não encontrado")) {
+        return res.status(404).json({
+          success: false,
+          message: error.message,
+          code: "SECTOR_NOT_FOUND",
+        });
+      }
+
+      if (error.message.includes("Setor está desativado")) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+          code: "SECTOR_INACTIVE",
         });
       }
 
@@ -100,6 +130,7 @@ export const userController = {
             : req.query.isActive === "false"
               ? false
               : undefined,
+        sectorId: req.query.sectorId as string, // 🔹 NOVO
         page: req.query.page ? Number(req.query.page) : undefined,
         limit: req.query.limit ? Number(req.query.limit) : undefined,
       };
@@ -293,6 +324,94 @@ export const userController = {
   },
 
   /**
+   * 🔹 NOVO — Update user sector (only MANAGER)
+   * PATCH /api/admin/users/:id/sector
+   */
+  async updateUserSector(req: Request, res: Response) {
+    try {
+      const adminId = req.user?.id;
+      if (!adminId) {
+        return res.status(401).json({
+          success: false,
+          message: "Usuário não autenticado",
+          code: "UNAUTHENTICATED",
+        });
+      }
+
+      const { id } = req.params;
+      const userId = typeof id === "string" ? id : id[0];
+
+      if (!userId) {
+        return res.status(400).json({
+          success: false,
+          message: "ID do usuário é obrigatório",
+          code: "MISSING_ID",
+        });
+      }
+
+      const { sectorId } = req.body;
+
+      if (!sectorId) {
+        return res.status(400).json({
+          success: false,
+          message: "Setor é obrigatório",
+          code: "MISSING_SECTOR",
+        });
+      }
+
+      const data: UpdateUserSectorData = { sectorId };
+
+      const user = await userService.updateUserSector(userId, data, adminId);
+
+      return res.status(200).json({
+        success: true,
+        message: "Setor atualizado com sucesso!",
+        data: user,
+      });
+    } catch (error: any) {
+      console.error("❌ Erro ao atualizar setor:", error);
+
+      if (error.message.includes("Usuário não encontrado")) {
+        return res.status(404).json({
+          success: false,
+          message: error.message,
+          code: "USER_NOT_FOUND",
+        });
+      }
+
+      if (error.message.includes("Setor não encontrado")) {
+        return res.status(404).json({
+          success: false,
+          message: error.message,
+          code: "SECTOR_NOT_FOUND",
+        });
+      }
+
+      if (error.message.includes("Setor está desativado")) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+          code: "SECTOR_INACTIVE",
+        });
+      }
+
+      if (error.message.includes("Setor é obrigatório")) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+          code: "MISSING_SECTOR",
+        });
+      }
+
+      return res.status(500).json({
+        success: false,
+        message: "Erro ao atualizar setor do usuário",
+        code: "INTERNAL_ERROR",
+      });
+    }
+  },
+
+  /**
    * Delete user (only MANAGER)
    * DELETE /api/admin/users/:id
    */
@@ -318,7 +437,7 @@ export const userController = {
         });
       }
 
-      // Não permitir deletar a si mesmo (regra de request — fica no controller)
+      // Não permitir deletar a si mesmo
       if (userId === adminId) {
         return res.status(400).json({
           success: false,
@@ -327,7 +446,6 @@ export const userController = {
         });
       }
 
-      // Verifica se o usuário existe antes de deletar
       const user = await userService.getUserById(userId, adminId);
       if (!user) {
         return res.status(404).json({

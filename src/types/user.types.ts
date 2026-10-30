@@ -1,16 +1,15 @@
+// src/types/user.types.ts
 import { Role } from "../generated/prisma/enums";
 
-// Dados para criar um usuário (apenas MANAGER)
 export interface CreateStaffUserData {
   email: string;
   name: string;
   password: string;
   role?: Role;
   image?: string;
+  sectorId: string; // 🔹 NOVO — obrigatório na Fase 6
 }
 
-// Usuário retornado pelo Better Auth (campos reais)
-// O Better Auth retorna Date, não string
 export interface BetterAuthUser {
   id: string;
   email: string;
@@ -21,16 +20,15 @@ export interface BetterAuthUser {
   updatedAt: Date;
   role: Role;
   isActive: boolean;
+  sectorId: string; // 🔹 NOVO
 }
 
-// Resposta do Better Auth ao criar usuário (tipagem correta)
 export interface BetterAuthUserResponse {
   token: string;
   user: BetterAuthUser;
   redirect?: boolean;
 }
 
-// Usuário retornado pela API (sem campos sensíveis)
 export interface UserResponse {
   id: string;
   email: string;
@@ -41,9 +39,14 @@ export interface UserResponse {
   lastLogin: Date | null;
   image: string | null;
   emailVerified: boolean;
+  sectorId: string; // 🔹 NOVO
+  sector?: {
+    id: string;
+    name: string;
+    isWarehouse: boolean;
+  }; // 🔹 NOVO — opcional
 }
 
-// Lista de usuários com paginação
 export interface UsersListResponse {
   users: UserResponse[];
   total: number;
@@ -51,16 +54,15 @@ export interface UsersListResponse {
   limit: number;
 }
 
-// Filtros para listagem de usuários
 export interface UserFilters {
   search?: string;
   role?: Role;
   isActive?: boolean;
+  sectorId?: string; // 🔹 NOVO
   page?: number;
   limit?: number;
 }
 
-// Tipo para o usuário autenticado no request
 export interface AuthenticatedUser {
   id: string;
   email: string;
@@ -68,9 +70,9 @@ export interface AuthenticatedUser {
   role: Role;
   emailVerified: boolean;
   isActive: boolean;
+  sectorId: string; // 🔹 NOVO
 }
 
-// Extensão do Request para incluir o usuário
 declare global {
   namespace Express {
     interface Request {
@@ -83,4 +85,9 @@ export interface UserOption {
   label: string;
   value: string;
   isActive: boolean;
+}
+
+// 🔹 NOVO — payload do PATCH /users/:id/sector
+export interface UpdateUserSectorData {
+  sectorId: string;
 }

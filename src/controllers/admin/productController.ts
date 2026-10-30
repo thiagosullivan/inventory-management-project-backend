@@ -365,7 +365,10 @@ export const productController = {
   async createMovement(req: Request, res: Response) {
     try {
       const userId = req.user?.id;
-      if (!userId) {
+      const userSectorId = req.user?.sectorId; // 🔹 NOVO
+      const userRole = req.user?.role; // 🔹 NOVO
+
+      if (!userId || !userSectorId || !userRole) {
         return res.status(401).json({
           success: false,
           message: "Usuário não autenticado",
@@ -422,6 +425,8 @@ export const productController = {
       const movement = await productService.createMovement(
         movementData,
         userId,
+        userSectorId, // 🔹 NOVO
+        userRole, // 🔹 NOVO
       );
 
       return res.status(201).json({
@@ -445,6 +450,15 @@ export const productController = {
           success: false,
           message: error.message,
           code: "INSUFFICIENT_STOCK",
+        });
+      }
+
+      // 🔹 NOVO — permissão de ENTRADA
+      if (error.message.includes("Apenas STAFF do Almoxarifado")) {
+        return res.status(403).json({
+          success: false,
+          message: error.message,
+          code: "FORBIDDEN",
         });
       }
 

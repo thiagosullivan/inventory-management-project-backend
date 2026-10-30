@@ -1,9 +1,11 @@
+// src/services/admin/userService.ts
 import { Role } from "../../generated/prisma/client.js";
 import { auth } from "../../lib/auth.js";
 import { prisma } from "../../lib/prisma.js";
 import {
   BetterAuthUserResponse,
   CreateStaffUserData,
+  UpdateUserSectorData,
   UserFilters,
   UserOption,
   UserResponse,
@@ -22,6 +24,11 @@ export const userService = {
       throw new Error(`Dados inválidos: ${validation.errors.join(", ")}`);
     }
 
+    // 🔹 NOVO — sectorId obrigatório
+    if (!data.sectorId) {
+      throw new Error("Dados inválidos: setor é obrigatório");
+    }
+
     // verify if its a manager
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
@@ -34,6 +41,18 @@ export const userService = {
 
     if (!isManager(admin.role)) {
       throw new Error("Apenas gerentes podem criar usuários");
+    }
+
+    // 🔹 NOVO — valida se o setor existe
+    const sector = await prisma.sector.findUnique({
+      where: { id: data.sectorId },
+      select: { id: true, isActive: true },
+    });
+    if (!sector) {
+      throw new Error("Setor não encontrado");
+    }
+    if (!sector.isActive) {
+      throw new Error("Setor está desativado");
     }
 
     // verify if email exists
@@ -53,6 +72,7 @@ export const userService = {
         name: data.name,
         password: data.password,
         image: data.image,
+        sectorId: data.sectorId, // 🔹 NOVO — obrigatório
       },
       headers: new Headers(),
     });
@@ -76,7 +96,6 @@ export const userService = {
     adminId: string,
     filters?: UserFilters,
   ): Promise<UsersListResponse> {
-    // verify role
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
       select: { role: true },
@@ -103,6 +122,11 @@ export const userService = {
       where.isActive = filters.isActive;
     }
 
+    // 🔹 NOVO — filtro por setor (Fase 7.5 vai usar)
+    if (filters?.sectorId) {
+      where.sectorId = filters.sectorId;
+    }
+
     const page = filters?.page || 1;
     const limit = filters?.limit || 10;
     const skip = (page - 1) * limit;
@@ -120,6 +144,10 @@ export const userService = {
           lastLogin: true,
           image: true,
           emailVerified: true,
+          sectorId: true, // 🔹 NOVO
+          sector: {
+            select: { id: true, name: true, isWarehouse: true },
+          }, // 🔹 NOVO
         },
         orderBy: { createdAt: "desc" },
         skip,
@@ -162,6 +190,10 @@ export const userService = {
         lastLogin: true,
         image: true,
         emailVerified: true,
+        sectorId: true, // 🔹 NOVO
+        sector: {
+          select: { id: true, name: true, isWarehouse: true },
+        }, // 🔹 NOVO
       },
     });
 
@@ -204,6 +236,7 @@ export const userService = {
         lastLogin: true,
         image: true,
         emailVerified: true,
+        sectorId: true, // 🔹 NOVO
       },
     });
 
@@ -225,7 +258,6 @@ export const userService = {
       throw new Error("Apenas gerentes podem alterar cargos de usuários");
     }
 
-    // verify if user exists
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { id: true },
@@ -235,7 +267,6 @@ export const userService = {
       throw new Error("Usuário não encontrado");
     }
 
-    // update role
     const updated = await prisma.user.update({
       where: { id: userId },
       data: { role: newRole },
@@ -249,6 +280,69 @@ export const userService = {
         lastLogin: true,
         image: true,
         emailVerified: true,
+        sectorId: true, // 🔹 NOVO
+      },
+    });
+
+    return updated;
+  },
+
+  // 🔹 NOVO — update sector (only manager)
+  async updateUserSector(
+    userId: string,
+    data: UpdateUserSectorData,
+    adminId: string,
+  ): Promise<UserResponse> {
+    const admin = await prisma.user.findUnique({
+      where: { id: adminId },
+      select: { role: true },
+    });
+
+    if (!admin || !isManager(admin.role)) {
+      throw new Error("Apenas gerentes podem alterar o setor de usuários");
+    }
+
+    if (!data.sectorId) {
+      throw new Error("Setor é obrigatório");
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+
+    if (!user) {
+      throw new Error("Usuário não encontrado");
+    }
+
+    const sector = await prisma.sector.findUnique({
+      where: { id: data.sectorId },
+      select: { id: true, isActive: true },
+    });
+    if (!sector) {
+      throw new Error("Setor não encontrado");
+    }
+    if (!sector.isActive) {
+      throw new Error("Setor está desativado");
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { sectorId: data.sectorId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        isActive: true,
+        createdAt: true,
+        lastLogin: true,
+        image: true,
+        emailVerified: true,
+        sectorId: true,
+        sector: {
+          select: { id: true, name: true, isWarehouse: true },
+        },
       },
     });
 
@@ -287,6 +381,7 @@ export const userService = {
         lastLogin: true,
         image: true,
         emailVerified: true,
+        sectorId: true, // 🔹 NOVO
       },
     });
 
@@ -296,12 +391,6 @@ export const userService = {
   /**
    * List user options for dropdowns/selects.
    * GET /admin/users/options (STAFF + MANAGER)
-   *
-   * Regras:
-   * - Só retorna usuários que criaram pelo menos um produto
-   *   (são os únicos relevantes pro filtro `createdById`).
-   * - Inclui usuários desativados (eles ainda têm produtos no estoque).
-   * - Shape enxuto: { label: name ?? email, value: id, isActive }.
    */
   async getUserOptions(): Promise<UserOption[]> {
     const users = await prisma.user.findMany({
@@ -318,7 +407,7 @@ export const userService = {
     });
 
     return users.map((u) => ({
-      label: u.name ?? u.email, // name é nullable — fallback pro email
+      label: u.name ?? u.email,
       value: u.id,
       isActive: u.isActive,
     }));

@@ -18,6 +18,7 @@ import {
   validateMovementData,
   validateProductData,
 } from "../../utils/validation";
+import { sectorService } from "./sectorService";
 
 /**
  * 🔹 Recalcula a média ponderada móvel após uma ENTRADA com preço > 0.
@@ -506,10 +507,25 @@ export const productService = {
   async createMovement(
     data: MovementData,
     userId: string,
+    userSectorId: string,
+    userRole: Role,
   ): Promise<MovementResponse> {
     const validation = validateMovementData(data);
     if (!validation.isValid) {
       throw new Error(`Dados inválidos: ${validation.errors.join(", ")}`);
+    }
+
+    // Fase 6: ENTRADA só STAFF do Almoxarifado ou MANAGER
+    if (data.type === MovementType.ENTRADA) {
+      const almoxarifadoId = await sectorService.getAlmoxarifadoId();
+      const isManager = userRole === Role.MANAGER;
+      const isAlmoxarifadoStaff = userSectorId === almoxarifadoId;
+
+      if (!isManager && !isAlmoxarifadoStaff) {
+        throw new Error(
+          "Apenas STAFF do Almoxarifado ou MANAGER podem dar ENTRADA no estoque",
+        );
+      }
     }
 
     const product = await prisma.product.findUnique({
@@ -723,7 +739,11 @@ export const productService = {
     }
     await prisma.stockAlert.update({
       where: { id: alertId },
-      data: { isResolved: true, resolvedAt: new Date(), resolvedBy: userId },
+      data: {
+        isResolved: true,
+        resolvedAt: new Date(),
+        resolvedById: userId,
+      },
     });
   },
 

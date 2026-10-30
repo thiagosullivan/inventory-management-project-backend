@@ -1,11 +1,10 @@
+// src/routes/admin/userRoutes.ts
 import express from "express";
 import { authenticate, isManager } from "../../middlewares/auth.js";
 import { userController } from "../../controllers/admin/userController.js";
 
 const adminRouter = express.Router();
 
-// 🔒 Todas as rotas deste router exigem MANAGER.
-//    (O /options vive em userOptionsRoutes, que só exige auth.)
 adminRouter.use(authenticate);
 adminRouter.use(isManager);
 
@@ -23,6 +22,9 @@ adminRouter.patch("/:id/status", userController.toggleUserStatus);
 
 // PATCH /admin/users/:id/role - Update role
 adminRouter.patch("/:id/role", userController.updateUserRole);
+
+// PATCH /admin/users/:id/sector - Update sector
+adminRouter.patch("/:id/sector", userController.updateUserSector);
 
 // DELETE /admin/users/:id - Delete user
 adminRouter.delete("/:id", userController.deleteUser);
