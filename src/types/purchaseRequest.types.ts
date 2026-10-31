@@ -134,3 +134,47 @@ export interface PurchaseRequestsListResponse {
   limit: number;
   totalPages: number;
 }
+
+// =============================
+// Transfers — shape do DETAIL
+// =============================
+
+export interface PurchaseRequestTransferItemRef {
+  id: string;
+  quantity: number;
+  product: {
+    id: string;
+    name: string;
+    sku: string;
+    barcode: string;
+    imageUrl: string | null;
+  };
+}
+
+export interface PurchaseRequestTransferDetailRef {
+  id: string;
+  status: "PENDENTE" | "CONCLUIDO" | "CANCELADO" | "RECUSADO";
+  reason: string | null;
+  cancelReason: string | null;
+  createdAt: Date;
+  confirmedAt: Date | null;
+  refusedAt: Date | null;
+  cancelledAt: Date | null;
+  createdBy: {
+    id: string;
+    name: string | null;
+    email: string;
+  } | null;
+  items: PurchaseRequestTransferItemRef[];
+}
+
+// =============================
+// Response — DETAIL (getById)
+// =============================
+
+export interface PurchaseRequestDetailResponse extends Omit<
+  PurchaseRequestResponse,
+  "transfers"
+> {
+  transfers: PurchaseRequestTransferDetailRef[];
+}

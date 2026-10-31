@@ -5,6 +5,7 @@ import {
   CatalogProduct,
   CreatePurchaseRequestData,
   FinalizePurchaseRequestData,
+  PurchaseRequestDetailResponse,
   PurchaseRequestFilters,
   PurchaseRequestResponse,
   PurchaseRequestStatus,
@@ -53,6 +54,39 @@ const requestInclude = {
     orderBy: { createdAt: "desc" as const },
   },
   _count: { select: { items: true, transfers: true } },
+} as const;
+
+const requestDetailInclude = {
+  ...requestInclude,
+  transfers: {
+    select: {
+      id: true,
+      status: true,
+      reason: true,
+      cancelReason: true,
+      createdAt: true,
+      confirmedAt: true,
+      refusedAt: true,
+      cancelledAt: true,
+      createdBy: { select: { id: true, name: true, email: true } },
+      items: {
+        select: {
+          id: true,
+          quantity: true,
+          product: {
+            select: {
+              id: true,
+              name: true,
+              sku: true,
+              barcode: true,
+              imageUrl: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" as const },
+  },
 } as const;
 
 // ============================================================
@@ -248,10 +282,10 @@ export const purchaseRequestService = {
     requestId: string,
     userSectorId: string,
     userRole: Role,
-  ): Promise<PurchaseRequestResponse | null> {
+  ): Promise<PurchaseRequestDetailResponse | null> {
     const request = await prisma.purchaseRequest.findUnique({
       where: { id: requestId },
-      include: requestInclude,
+      include: requestDetailInclude,
     });
 
     if (!request) return null;
