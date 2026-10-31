@@ -6,12 +6,14 @@ import productRouter from "./admin/productRoutes.js";
 import dashboardRouter from "./admin/dashboardRoutes.js";
 import exportRouter from "./admin/exportRoutes.js";
 import userOptionsRouter from "./admin/userOptionsRoutes";
-
-// 🔹 NOVO — Fase 6
 import sectorRouter from "./admin/sectorRoutes.js";
 import transferRouter from "./admin/transferRoutes.js";
 import purchaseRequestRouter from "./admin/purchaseRequestRoutes.js";
 import movementRouter from "./admin/movementRoutes.js";
+
+// UploadThing
+import { createRouteHandler } from "uploadthing/express";
+import { uploadRouter } from "../utils/uploadthing";
 
 const router = express.Router();
 
@@ -41,6 +43,14 @@ router.use("/admin", sectorRouter);
 router.use("/admin", transferRouter);
 router.use("/admin", purchaseRequestRouter);
 router.use("/admin", movementRouter);
+
+router.use(
+  "/uploadthing",
+  createRouteHandler({
+    router: uploadRouter,
+    config: {},
+  }),
+);
 
 // Health check
 router.get("/health", async (req, res) => {

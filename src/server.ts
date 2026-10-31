@@ -11,9 +11,18 @@ const port = process.env.PORT || 3000;
 // Middlewares
 app.use(
   cors({
-    origin: "http://localhost:5173", // URL do Vite (não pode ser "*")
-    credentials: true, // 👈 Permite cookies
-    allowedHeaders: ["Authorization", "Content-Type"],
+    origin: "http://localhost:5173",
+    credentials: true,
+    allowedHeaders: [
+      "Authorization",
+      "Content-Type",
+      "x-uploadthing-package",
+      "x-uploadthing-version",
+      "b3",
+      "traceparent",
+    ],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    optionsSuccessStatus: 200,
   }),
 );
 app.use(express.json());

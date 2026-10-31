@@ -19,6 +19,7 @@ import {
   validateProductData,
 } from "../../utils/validation";
 import { sectorService } from "./sectorService";
+import { utapi } from "../../utils/uploadthing";
 
 /**
  * 🔹 Recalcula a média ponderada móvel após uma ENTRADA com preço > 0.
@@ -473,6 +474,19 @@ export const productService = {
       throw new Error(
         "Apenas o criador do produto ou um MANAGER podem deletá-lo",
       );
+    }
+
+    if (existingProduct.imageUrl) {
+      try {
+        const fileKey = existingProduct.imageUrl.split("/").pop();
+        if (fileKey) {
+          await utapi.deleteFiles(fileKey);
+        }
+      } catch (error) {
+        // Loga mas NÃO impede a deleção do produto.
+        // A imagem órfã no UploadThing é menos crítica que o produto preso no banco.
+        console.error("Erro ao deletar imagem do UploadThing:", error);
+      }
     }
 
     // Usamos uma transação para garantir consistência e segurança no banco
