@@ -384,7 +384,6 @@ export const transferController = {
         });
       }
 
-      // 🔹 NOVO — refusalReason obrigatório
       const { refusalReason } = req.body;
 
       if (!refusalReason || !refusalReason.trim()) {

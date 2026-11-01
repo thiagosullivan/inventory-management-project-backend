@@ -468,10 +468,23 @@ export const transferService = {
     userSectorId: string,
     userRole: Role,
   ): Promise<TransferResponse> {
-    // Buscar transfer
+    // Buscar transfer + dados necessários pra montar o Movement de SAIDA
     const transfer = await prisma.transfer.findUnique({
       where: { id: transferId },
-      select: { id: true, status: true, toSectorId: true, fromSectorId: true },
+      select: {
+        id: true,
+        status: true,
+        toSectorId: true,
+        fromSectorId: true,
+        toSector: { select: { name: true } },
+        items: {
+          select: {
+            productId: true,
+            quantity: true,
+            product: { select: { avgPriceInCents: true } },
+          },
+        },
+      },
     });
 
     if (!transfer) {
@@ -488,8 +501,9 @@ export const transferService = {
       );
     }
 
-    // Transação: Transfer + N Movements
+    // Transação: Transfer → CONCLUIDO + TRANSFERENCIA → CONCLUIDO + SAIDA por item
     const updated = await prisma.$transaction(async (tx) => {
+      // 1. Transfer → CONCLUIDO
       await tx.transfer.update({
         where: { id: transferId },
         data: {
@@ -499,10 +513,29 @@ export const transferService = {
         },
       });
 
+      // 2. Movements de TRANSFERENCIA vinculados → CONCLUIDO
       await tx.movement.updateMany({
         where: { transferId },
         data: { status: MovementStatus.CONCLUIDO },
       });
+
+      // 3. 🔹 Cria 1 Movement de SAIDA por item (entra nas métricas do dashboard)
+      for (const item of transfer.items) {
+        await tx.movement.create({
+          data: {
+            productId: item.productId,
+            type: MovementType.SAIDA,
+            quantity: -item.quantity,
+            reason: `Remessa ${transfer.id} confirmada — ${transfer.toSector.name}`,
+            status: MovementStatus.CONCLUIDO,
+            fromSectorId: transfer.fromSectorId,
+            toSectorId: transfer.toSectorId,
+            transferId: transfer.id,
+            unitPriceInCents: item.product.avgPriceInCents,
+            createdById: userId,
+          },
+        });
+      }
 
       return tx.transfer.findUnique({
         where: { id: transferId },
@@ -527,7 +560,7 @@ export const transferService = {
    */
   async refuseTransfer(
     transferId: string,
-    data: RefuseTransferData, // 🔹 novo
+    data: RefuseTransferData,
     userId: string,
     userSectorId: string,
     userRole: Role,
@@ -747,7 +780,6 @@ export const transferService = {
       throw new Error("Erro ao cancelar remessa");
     }
 
-    // 🔹 NOVO — re-checar alertas (estoque voltou)
     for (const item of transfer.items) {
       const product = await prisma.product.findUnique({
         where: { id: item.productId },
