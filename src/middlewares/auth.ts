@@ -44,9 +44,16 @@ export const authenticate = async (
       },
     });
 
-    if (!fullUser || !fullUser.isActive) {
+    if (!fullUser) {
       return res.status(401).json({
-        message: "Usuário desativado ou não encontrado",
+        message: "Usuário não encontrado",
+      });
+    }
+
+    if (!fullUser.isActive) {
+      return res.status(403).json({
+        message: "Usuário desativado",
+        code: "USER_INACTIVE",
       });
     }
 

@@ -1,0 +1,1 @@
+TRUNCATE TABLE "StockHistory", "StockAlert", "Movement", "Product", "CategoryCounter", "CustomCategory", "Session", "Account", "Verification", "User" CASCADE;
