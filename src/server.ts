@@ -4,6 +4,7 @@ import cors from "cors";
 import "dotenv/config";
 import { prisma } from "./lib/prisma.js";
 import apiRouter from "./routes/index.js";
+import meRoutes from "./routes/admin/meRoutes.js";
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -30,6 +31,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 app.use("/api", apiRouter);
+app.use("/me", meRoutes);
 
 app.listen(port, () => {
   console.log(`🚀 Servidor rodando em http://localhost:${port}`);

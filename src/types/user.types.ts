@@ -63,6 +63,12 @@ export interface UserFilters {
   limit?: number;
 }
 
+export interface AuthenticatedSector {
+  id: string;
+  name: string;
+  isWarehouse: boolean;
+}
+
 export interface AuthenticatedUser {
   id: string;
   email: string;
@@ -70,7 +76,8 @@ export interface AuthenticatedUser {
   role: Role;
   emailVerified: boolean;
   isActive: boolean;
-  sectorId: string; // 🔹 NOVO
+  sectorId: string;
+  sector: AuthenticatedSector;
 }
 
 declare global {

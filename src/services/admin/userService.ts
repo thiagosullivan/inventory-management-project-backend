@@ -14,7 +14,6 @@ import {
 import { isManager, validateUserData } from "../../utils/validation.js";
 
 export const userService = {
-  // Create user (Only manager)
   async createStaffUser(
     data: CreateStaffUserData,
     adminId: string,
