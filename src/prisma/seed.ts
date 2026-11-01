@@ -117,7 +117,7 @@ async function main() {
   if (!admin) throw new Error("Admin não encontrado após criação!");
 
   // 2.2 STAFF do Almoxarifado
-  const staffAlmoxEmail = "almoxarife@estoque.com";
+  const staffAlmoxEmail = "almoxarifado@estoque.com";
   let staffAlmox = await prisma.user.findUnique({
     where: { email: staffAlmoxEmail },
   });
@@ -128,9 +128,9 @@ async function main() {
         body: {
           email: staffAlmoxEmail,
           password: "Staff@123",
-          name: "Almoxarife Teste",
+          name: "Almoxarifado Teste",
           image: "...",
-          sectorId: sectorId("Almoxarifado"), // 🔹 NOVO
+          sectorId: sectorId("Almoxarifado"),
         },
       });
       staffAlmox = await prisma.user.findUnique({
@@ -746,7 +746,9 @@ async function main() {
   console.log(`   - Escola (isWarehouse: false)`);
   console.log(`👤 Usuários:`);
   console.log(`   - MANAGER: admin@estoque.com / Admin@123 (Almoxarifado)`);
-  console.log(`   - STAFF: almoxarife@estoque.com / Staff@123 (Almoxarifado)`);
+  console.log(
+    `   - STAFF: almoxarifado@estoque.com / Staff@123 (Almoxarifado)`,
+  );
   console.log(`   - STAFF: cozinha@estoque.com / Staff@123 (Cozinha)`);
   console.log(`   - STAFF: escola@estoque.com / Staff@123 (Escola)`);
   console.log(`📂 Categorias: ${categoryNames.length}`);
