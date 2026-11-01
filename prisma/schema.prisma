@@ -20,7 +20,7 @@ enum MovementType {
   ENTRADA
   SAIDA
   AJUSTE
-  TRANSFERENCIA // 🔹 usado pelas remessas (Transfer)
+  TRANSFERENCIA
 }
 
 enum MovementStatus {
@@ -29,15 +29,14 @@ enum MovementStatus {
   CANCELADO
 }
 
-// 🔹 NOVO — status da remessa
+// status da remessa
 enum TransferStatus {
   PENDENTE
   CONCLUIDO
   CANCELADO
-  RECUSADO // 🔹 era REJEITADO
+  RECUSADO
 }
 
-// 🔹 NOVO — status do pedido
 enum PurchaseRequestStatus {
   PENDENTE
   EM_ATENDIMENTO
@@ -63,7 +62,6 @@ model User {
   lastLogin     DateTime?
   emailVerified Boolean   @default(false)
 
-  // 🔹 NOVO — obrigatório na Fase 6 (banco dropado e recriado; seed cria setores antes)
   sectorId String
   sector   Sector @relation(fields: [sectorId], references: [id], onDelete: Restrict)
 
@@ -76,15 +74,15 @@ model User {
   updatedProducts   Product[]        @relation("UpdatedBy")
   movements         Movement[]       @relation("CreatedBy")
   stockHistory      StockHistory[]
-  resolvedAlerts    StockAlert[]     @relation("AlertResolvedBy") // 🔹 NOVO (relação FK)
+  resolvedAlerts    StockAlert[]     @relation("AlertResolvedBy")
 
-  // 🔹 NOVO — Transfer
+  // Transfer
   createdTransfers   Transfer[] @relation("TransferCreatedBy")
   confirmedTransfers Transfer[] @relation("TransferConfirmedBy")
   refusedTransfers   Transfer[] @relation("TransferRefusedBy")
   cancelledTransfers Transfer[] @relation("TransferCancelledBy")
 
-  // 🔹 NOVO — PurchaseRequest
+  // PurchaseRequest
   createdRequests   PurchaseRequest[] @relation("RequestCreatedBy")
   finalizedRequests PurchaseRequest[] @relation("RequestFinalizedBy")
   refusedRequests   PurchaseRequest[] @relation("RequestRefusedBy")
@@ -92,7 +90,7 @@ model User {
   @@index([email])
   @@index([role])
   @@index([isActive])
-  @@index([sectorId]) // 🔹 NOVO
+  @@index([sectorId])
 }
 
 model Account {
@@ -143,14 +141,14 @@ model Verification {
 }
 
 // ============================================================
-// SETOR (🔹 NOVO)
+// SETOR
 // ============================================================
 
 model Sector {
   id          String   @id @default(cuid())
   name        String   @unique(map: "sector_name_key")
   description String?
-  isWarehouse Boolean  @default(false) // 🔹 exatamente 1 true (Almoxarifado), imutável
+  isWarehouse Boolean  @default(false)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -208,7 +206,7 @@ model Product {
   sku             String    @unique(map: "product_sku_key")
   barcode         String    @unique(map: "product_barcode_key")
   description     String?
-  quantity        Int       @default(0) // 🔹 estoque do Almoxarifado (ponto 0)
+  quantity        Int       @default(0)
   minStock        Int?      @default(5)
   maxStock        Int?
   expiryDate      DateTime?
@@ -221,8 +219,8 @@ model Product {
   updatedAt       DateTime  @updatedAt
   categoryId      String
   imageUrl        String?
-  priceInCents    Int? // último preço de compra (cache)
-  avgPriceInCents Int? // média ponderada móvel
+  priceInCents    Int?
+  avgPriceInCents Int?
 
   // Relações
   category     CustomCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
@@ -232,7 +230,6 @@ model Product {
   stockAlerts  StockAlert[]
   stockHistory StockHistory[]
 
-  // 🔹 NOVO — Fase 6
   requestItems  PurchaseRequestItem[]
   transferItems TransferItem[]
 
@@ -253,13 +250,12 @@ model Movement {
   id               String         @id @default(cuid())
   productId        String
   type             MovementType
-  quantity         Int // 🔹 em TRANSFERENCIA, é negativo (saída do Almoxarifado)
+  quantity         Int
   reason           String?
   status           MovementStatus @default(CONCLUIDO)
-  unitPriceInCents Int? // só ENTRADA
-  supplier         String? // só ENTRADA
+  unitPriceInCents Int?
+  supplier         String?
 
-  // 🔹 NOVO — Fase 6 (só TRANSFERENCIA preenche)
   fromSectorId String?
   toSectorId   String?
   transferId   String?
@@ -319,7 +315,6 @@ model StockAlert {
   message      String
   isResolved   Boolean   @default(false)
   resolvedAt   DateTime?
-  // 🔹 ALTERADO — era String? solto; agora FK pra User
   resolvedById String?
   createdAt    DateTime  @default(now())
 
@@ -332,28 +327,29 @@ model StockAlert {
 }
 
 // ============================================================
-// TRANSFER (remessa) — 🔹 NOVO
+// TRANSFER (remessa)
 // ============================================================
 
 model Transfer {
   id                String         @id @default(cuid())
-  fromSectorId      String // 🔹 sempre o Almoxarifado (forçado no backend)
+  fromSectorId      String
   toSectorId        String
-  purchaseRequestId String? // 🔹 vínculo opcional com pedido
+  purchaseRequestId String?
   status            TransferStatus @default(PENDENTE)
   reason            String?
-  cancelReason      String? // 🔹 obrigatório quando CANCELADO (auditoria)
+  refusalReason     String?
+  cancelReason      String?
 
   createdById   String
   confirmedById String?
-  refusedById   String? // 🔹 era rejectedById
-  cancelledById String? // 🔹 NOVO
+  refusedById   String?
+  cancelledById String?
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   confirmedAt DateTime?
-  refusedAt   DateTime? // 🔹 era rejectedAt
-  cancelledAt DateTime? // 🔹 NOVO
+  refusedAt   DateTime?
+  cancelledAt DateTime?
 
   // Relações
   fromSector      Sector           @relation("TransferFromSector", fields: [fromSectorId], references: [id], onDelete: Restrict)
@@ -386,16 +382,16 @@ model TransferItem {
 }
 
 // ============================================================
-// PURCHASE REQUEST (pedido) — 🔹 NOVO
+// PURCHASE REQUEST (pedido)
 // ============================================================
 
 model PurchaseRequest {
   id            String                @id @default(cuid())
-  sectorId      String // setor que pediu (não-Almoxarifado)
+  sectorId      String
   status        PurchaseRequestStatus @default(PENDENTE)
-  notes         String? // textarea livre (itens não cadastrados) — setor criador
-  refusalReason String? // obrigatório quando RECUSADO — Almoxarifado
-  finalizeNote  String? // 🔹 obrigatório quando há Transfer RECUSADO/CANCELADO
+  notes         String?
+  refusalReason String?
+  finalizeNote  String?
 
   createdById   String
   finalizedById String?
@@ -422,7 +418,7 @@ model PurchaseRequest {
 model PurchaseRequestItem {
   id        String          @id @default(cuid())
   requestId String
-  productId String // sempre produto cadastrado (extra vai no notes)
+  productId String
   quantity  Int
   request   PurchaseRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   product   Product         @relation(fields: [productId], references: [id], onDelete: Restrict)

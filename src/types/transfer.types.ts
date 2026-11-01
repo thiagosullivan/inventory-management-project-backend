@@ -27,7 +27,11 @@ export interface CreateTransferData {
 }
 
 export interface CancelTransferData {
-  cancelReason: string; // 🔹 obrigatório (auditoria)
+  cancelReason: string;
+}
+
+export interface RefuseTransferData {
+  refusalReason: string;
 }
 
 // =============================

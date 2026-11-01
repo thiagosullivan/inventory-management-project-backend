@@ -63,6 +63,7 @@ const requestDetailInclude = {
       id: true,
       status: true,
       reason: true,
+      refusalReason: true,
       cancelReason: true,
       createdAt: true,
       confirmedAt: true,

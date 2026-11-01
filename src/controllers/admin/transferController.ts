@@ -4,6 +4,7 @@ import { transferService } from "../../services/admin/transferService.js";
 import {
   CancelTransferData,
   CreateTransferData,
+  RefuseTransferData,
   TransferFilters,
   TransferStatus,
 } from "../../types/transfer.types.js";
@@ -383,8 +384,22 @@ export const transferController = {
         });
       }
 
+      // 🔹 NOVO — refusalReason obrigatório
+      const { refusalReason } = req.body;
+
+      if (!refusalReason || !refusalReason.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Motivo da recusa é obrigatório",
+          code: "MISSING_REFUSAL_REASON",
+        });
+      }
+
+      const data: RefuseTransferData = { refusalReason: refusalReason.trim() };
+
       const transfer = await transferService.refuseTransfer(
         transferId,
+        data,
         userId,
         userSectorId,
         userRole,
@@ -419,6 +434,14 @@ export const transferController = {
           success: false,
           message: error.message,
           code: "INVALID_STATUS",
+        });
+      }
+
+      if (error.message.includes("Motivo da recusa é obrigatório")) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+          code: "MISSING_REFUSAL_REASON",
         });
       }
 

@@ -155,6 +155,7 @@ export interface PurchaseRequestTransferDetailRef {
   id: string;
   status: "PENDENTE" | "CONCLUIDO" | "CANCELADO" | "RECUSADO";
   reason: string | null;
+  refusalReason: string | null;
   cancelReason: string | null;
   createdAt: Date;
   confirmedAt: Date | null;

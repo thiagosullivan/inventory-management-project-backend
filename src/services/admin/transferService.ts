@@ -5,6 +5,7 @@ import { productService } from "./productService.js";
 import {
   CancelTransferData,
   CreateTransferData,
+  RefuseTransferData,
   TransferFilters,
   TransferResponse,
   TransfersListResponse,
@@ -526,11 +527,18 @@ export const transferService = {
    */
   async refuseTransfer(
     transferId: string,
+    data: RefuseTransferData, // 🔹 novo
     userId: string,
     userSectorId: string,
     userRole: Role,
   ): Promise<TransferResponse> {
-    // Buscar transfer com items
+    // 1. refusalReason obrigatório
+    const refusalReason = data.refusalReason?.trim();
+    if (!refusalReason) {
+      throw new Error("Motivo da recusa é obrigatório");
+    }
+
+    // 2. Buscar transfer com items
     const transfer = await prisma.transfer.findUnique({
       where: { id: transferId },
       select: {
@@ -546,34 +554,36 @@ export const transferService = {
       throw new Error("Remessa não encontrada");
     }
 
-    // Permissão
+    // 3. Permissão
     ensureCanConfirmOrRefuse(transfer.toSectorId, userSectorId, userRole);
 
-    // Só recusa se estiver PENDENTE
+    // 4. Só recusa se estiver PENDENTE
     if (transfer.status !== PrismaTransferStatus.PENDENTE) {
       throw new Error(
         `Remessa não pode ser recusada (status atual: ${transfer.status})`,
       );
     }
 
+    // 5. Transação
     const updated = await prisma.$transaction(async (tx) => {
-      // 1. Transfer → RECUSADO
+      // 5.1 Transfer → RECUSADO
       await tx.transfer.update({
         where: { id: transferId },
         data: {
           status: PrismaTransferStatus.RECUSADO,
+          refusalReason, // 🔹 NOVO
           refusedById: userId,
           refusedAt: new Date(),
         },
       });
 
-      // 2. Movements → CANCELADO
+      // 5.2 Movements → CANCELADO
       await tx.movement.updateMany({
         where: { transferId },
         data: { status: MovementStatus.CANCELADO },
       });
 
-      // 3. Devolver estoque + StockHistory por item
+      // 5.3 Devolver estoque + StockHistory por item
       for (const item of transfer.items) {
         const product = await tx.product.findUnique({
           where: { id: item.productId },
@@ -596,7 +606,7 @@ export const transferService = {
             oldQuantity: product.quantity,
             newQuantity,
             changedById: userId,
-            reason: `Devolução (recusa da remessa ${transferId})`,
+            reason: `Devolução (recusa da remessa ${transferId}): ${refusalReason}`,
           },
         });
       }
@@ -611,7 +621,7 @@ export const transferService = {
       throw new Error("Erro ao recusar remessa");
     }
 
-    // 🔹 NOVO — re-checar alertas (estoque voltou)
+    // 6. re-checar alertas (estoque voltou)
     for (const item of transfer.items) {
       const product = await prisma.product.findUnique({
         where: { id: item.productId },
