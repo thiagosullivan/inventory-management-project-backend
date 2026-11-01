@@ -14,31 +14,23 @@ import movementRouter from "./admin/movementRoutes.js";
 // UploadThing
 import { createRouteHandler } from "uploadthing/express";
 import { uploadRouter } from "../utils/uploadthing";
+import meRouter from "./admin/meRoutes";
 
 const router = express.Router();
 
 // Authentication routes
 router.use("/auth", authRouter);
 
-//    Senão o adminRouter captura /admin/users/options e bloqueia STAFF.
-router.use("/admin/users/options", userOptionsRouter);
+// 🔹 Perfil do usuário logado (qualquer role)
+router.use("/me", meRouter);
 
 // Admin routes
+router.use("/admin/users/options", userOptionsRouter);
 router.use("/admin/users", adminRouter);
-
-// Staff/Admin Routes
 router.use("/admin", categoryRouter);
-
-// Product routes
 router.use("/admin", productRouter);
-
-// Dashboard routes
 router.use("/admin", dashboardRouter);
-
-// Export routes
 router.use("/admin", exportRouter);
-
-// 🔹 NOVO — Fase 6
 router.use("/admin", sectorRouter);
 router.use("/admin", transferRouter);
 router.use("/admin", purchaseRequestRouter);

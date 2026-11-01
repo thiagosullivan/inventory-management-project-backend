@@ -28,10 +28,8 @@ export const authenticate = async (
       });
     }
 
-    const userFromSession = session.user;
-
     const fullUser = await prisma.user.findUnique({
-      where: { id: userFromSession.id },
+      where: { id: session.user.id },
       select: {
         id: true,
         email: true,
@@ -39,7 +37,10 @@ export const authenticate = async (
         role: true,
         emailVerified: true,
         isActive: true,
-        sectorId: true, // 🔹 NOVO — Fase 6
+        sectorId: true,
+        sector: {
+          select: { id: true, name: true, isWarehouse: true },
+        },
       },
     });
 
@@ -56,7 +57,8 @@ export const authenticate = async (
       role: fullUser.role,
       emailVerified: fullUser.emailVerified || false,
       isActive: true,
-      sectorId: fullUser.sectorId, // 🔹 NOVO
+      sectorId: fullUser.sectorId,
+      sector: fullUser.sector, // 🔹
     };
 
     next();
@@ -75,14 +77,12 @@ export const authorize = (...allowedRoles: Role[]) => {
         message: "Não autenticado. Faça login primeiro.",
       });
     }
-
     if (!allowedRoles.includes(req.user.role)) {
       return res.status(403).json({
         message: `Permissão negada. Acesso permitido apenas para: ${allowedRoles.join(", ")}`,
         yourRole: req.user.role,
       });
     }
-
     next();
   };
 };
