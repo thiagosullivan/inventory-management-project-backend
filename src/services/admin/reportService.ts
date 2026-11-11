@@ -114,16 +114,16 @@ function resolvePeriod(
 
 /**
  * 🔹 Lista de meses "YYYY-MM" cobertos pelo range.
+ * Compara por (ano*12 + mês) — imune a boundaries de fuso/DST.
  */
 function monthsBetween(from: Date, to: Date): string[] {
   const months: string[] = [];
-  const cursor = new Date(from.getFullYear(), from.getMonth(), 1);
-  const end = new Date(to.getFullYear(), to.getMonth(), 1);
-  while (cursor <= end) {
-    months.push(
-      `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`,
-    );
-    cursor.setMonth(cursor.getMonth() + 1);
+  const fromIdx = from.getFullYear() * 12 + from.getMonth();
+  const toIdx = to.getFullYear() * 12 + to.getMonth();
+  for (let idx = fromIdx; idx <= toIdx; idx++) {
+    const year = Math.floor(idx / 12);
+    const month = idx % 12;
+    months.push(`${year}-${String(month + 1).padStart(2, "0")}`);
   }
   return months;
 }
