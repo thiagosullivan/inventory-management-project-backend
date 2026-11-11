@@ -754,7 +754,7 @@ export const reportService = {
     // ---- WHERE ----
     const where: any = {
       type: MovementType.SAIDA,
-      transferId: null,
+      transferId: { equals: null },
       createdAt: { gte: period.dateFrom, lte: period.dateTo },
     };
     if (filters?.sectorId) where.fromSectorId = filters.sectorId;
