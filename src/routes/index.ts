@@ -11,6 +11,7 @@ import transferRouter from "./admin/transferRoutes.js";
 import purchaseRequestRouter from "./admin/purchaseRequestRoutes.js";
 import movementRouter from "./admin/movementRoutes.js";
 import reportRouter from "./admin/reportRoutes.js";
+import historyRouter from "./admin/historyRoutes.js";
 
 // UploadThing
 import { createRouteHandler } from "uploadthing/express";
@@ -37,6 +38,7 @@ router.use("/admin", transferRouter);
 router.use("/admin", purchaseRequestRouter);
 router.use("/admin", movementRouter);
 router.use("/admin", reportRouter);
+router.use("/admin", historyRouter);
 
 router.use(
   "/uploadthing",
