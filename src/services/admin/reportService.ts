@@ -118,8 +118,8 @@ function resolvePeriod(
  */
 function monthsBetween(from: Date, to: Date): string[] {
   const months: string[] = [];
-  const fromIdx = from.getFullYear() * 12 + from.getMonth();
-  const toIdx = to.getFullYear() * 12 + to.getMonth();
+  const fromIdx = from.getUTCFullYear() * 12 + from.getUTCMonth();
+  const toIdx = to.getUTCFullYear() * 12 + to.getUTCMonth();
   for (let idx = fromIdx; idx <= toIdx; idx++) {
     const year = Math.floor(idx / 12);
     const month = idx % 12;
@@ -129,7 +129,7 @@ function monthsBetween(from: Date, to: Date): string[] {
 }
 
 function monthKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 /**
