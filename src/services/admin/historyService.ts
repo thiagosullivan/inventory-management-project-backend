@@ -68,6 +68,13 @@ async function buildMovementWhere(
     if (filters.dateTo) where.createdAt.lte = new Date(filters.dateTo);
   }
 
+  // hasTransfer (modo Movimentações / Transferências)
+  if (filters?.hasTransfer === true) {
+    where.transferId = { not: null };
+  } else if (filters?.hasTransfer === false) {
+    where.transferId = { equals: null };
+  }
+
   // search: só Movements (join unaccent em Product + reason)
   if (filters?.search) {
     const rows = await prisma.$queryRaw<{ id: string }[]>`
@@ -88,46 +95,91 @@ async function buildMovementWhere(
  * 🔹 Where de Transfer (visibilidade + filtros).
  * - type: Transfer não tem `type` → excluir Transfers quando filtro presente.
  * - status: só aplica se existir em TransferStatus; senão exclui Transfers.
- * - productId: via items.some (mantém todos os items no retorno).
+ * - hasTransfer=false: excluir Transfers (modo Movimentações).
+ * - productId: via items.some.
+ * - search: itens (product.name/sku) OU Transfer.reason.
  * - dateFrom/dateTo: em Transfer.createdAt.
+ *
+ * Combinações:
+ * - Visibilidade por setor (quando !canViewAll) e busca são AND.
+ * - productId + search: o item precisa casar com productId E com name/sku;
+ *   OU o Transfer.reason casa com search. Isso é montado num OR externo.
  */
 function buildTransferWhere(
   filters: HistoryFilters | undefined,
   canViewAll: boolean,
   userSectorId: string,
 ): { where: any; include: boolean } {
-  const where: any = {};
-
-  if (!canViewAll) {
-    where.OR = [{ fromSectorId: userSectorId }, { toSectorId: userSectorId }];
-  }
-
-  if (filters?.createdById) where.createdById = filters.createdById;
-  if (filters?.productId) {
-    where.items = { some: { productId: filters.productId } };
-  }
-
-  if (filters?.dateFrom || filters?.dateTo) {
-    where.createdAt = {};
-    if (filters.dateFrom) where.createdAt.gte = new Date(filters.dateFrom);
-    if (filters.dateTo) where.createdAt.lte = new Date(filters.dateTo);
-  }
-
-  // 🔹 type não existe em Transfer → excluir Transfers
+  // 🔹 Atalhos de exclusão (Transfer não participa do resultado)
   if (filters?.type) {
-    return { where, include: false };
+    return { where: {}, include: false };
   }
-
+  if (filters?.hasTransfer === false) {
+    return { where: {}, include: false };
+  }
   if (filters?.status) {
     const validTransferStatuses = Object.values(PrismaTransferStatus);
-    if (validTransferStatuses.includes(filters.status as any)) {
-      where.status = filters.status;
-    } else {
-      return { where, include: false };
+    if (!validTransferStatuses.includes(filters.status as any)) {
+      return { where: {}, include: false };
     }
   }
 
-  return { where, include: true };
+  // 🔹 ANDs comuns (visibilidade, createdById, createdAt, status)
+  const and: any[] = [];
+
+  if (!canViewAll) {
+    and.push({
+      OR: [{ fromSectorId: userSectorId }, { toSectorId: userSectorId }],
+    });
+  }
+
+  if (filters?.createdById) {
+    and.push({ createdById: filters.createdById });
+  }
+
+  if (filters?.dateFrom || filters?.dateTo) {
+    const createdAt: any = {};
+    if (filters.dateFrom) createdAt.gte = new Date(filters.dateFrom);
+    if (filters.dateTo) createdAt.lte = new Date(filters.dateTo);
+    and.push({ createdAt });
+  }
+
+  if (filters?.status) {
+    and.push({ status: filters.status });
+  }
+
+  // 🔹 Busca + productId: OR entre "item casa" e "reason casa"
+  const search = filters?.search;
+  const productId = filters?.productId;
+
+  if (search || productId) {
+    const orClauses: any[] = [];
+
+    const itemConditions: any = {};
+    if (productId) itemConditions.productId = productId;
+    if (search) {
+      itemConditions.product = {
+        OR: [
+          { name: { contains: search, mode: "insensitive" } },
+          { sku: { contains: search, mode: "insensitive" } },
+        ],
+      };
+    }
+    orClauses.push({ items: { some: itemConditions } });
+
+    if (search) {
+      orClauses.push({
+        reason: { contains: search, mode: "insensitive" },
+      });
+    }
+
+    and.push({ OR: orClauses });
+  }
+
+  return {
+    where: and.length > 0 ? { AND: and } : {},
+    include: true,
+  };
 }
 
 // ============================================================

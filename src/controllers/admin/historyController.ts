@@ -52,6 +52,20 @@ export const historyController = {
         includeTransfers = raw === "true";
       }
 
+      // 🔹 hasTransfer: "true" (só Movements com transferId) / "false" (só sem)
+      let hasTransfer: boolean | undefined;
+      if (req.query.hasTransfer !== undefined) {
+        const raw = String(req.query.hasTransfer).toLowerCase();
+        if (raw !== "true" && raw !== "false") {
+          return res.status(400).json({
+            success: false,
+            message: "hasTransfer deve ser 'true' ou 'false'",
+            code: "INVALID_HAS_TRANSFER",
+          });
+        }
+        hasTransfer = raw === "true";
+      }
+
       const filters: HistoryFilters = {
         type: req.query.type as MovementType | undefined,
         status: req.query.status as MovementStatus | undefined,
@@ -64,6 +78,7 @@ export const historyController = {
         limit: req.query.limit ? Number(req.query.limit) : undefined,
         sortOrder: req.query.sortOrder as any,
         includeTransfers,
+        hasTransfer, // 🔹 novo
       };
 
       const result = await historyService.listHistory(

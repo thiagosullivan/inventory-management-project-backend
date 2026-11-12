@@ -33,6 +33,7 @@ export interface HistoryFilters {
   sortBy?: "createdAt"; // 🔹 só createdAt (merge unificado por createdAt)
   sortOrder?: HistorySortOrder; // default desc
   includeTransfers?: boolean; // default true
+  hasTransfer?: boolean;
 }
 
 // =============================
