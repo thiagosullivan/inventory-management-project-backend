@@ -27,6 +27,7 @@ enum MovementStatus {
   PENDENTE
   CONCLUIDO
   CANCELADO
+  RECUSADO
 }
 
 // status da remessa
