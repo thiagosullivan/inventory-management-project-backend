@@ -2,7 +2,10 @@
 import { prisma } from "../../lib/prisma.js";
 import { sectorService } from "./sectorService.js";
 import { Role } from "../../generated/prisma/enums.js";
-import { TransferStatus as PrismaTransferStatus } from "../../generated/prisma/client.js";
+import {
+  MovementStatus,
+  TransferStatus as PrismaTransferStatus,
+} from "../../generated/prisma/client.js";
 import {
   HistoryEvent,
   HistoryFilters,
@@ -30,6 +33,8 @@ async function canViewEverything(
 
 /**
  * 🔹 Where de Movement (visibilidade + filtros + search).
+ * - status: se não existir em MovementStatus (ex.: RECUSADO), força
+ *   resultado vazio (evita 500 no Prisma por enum inválido).
  */
 async function buildMovementWhere(
   filters: HistoryFilters | undefined,
@@ -43,7 +48,17 @@ async function buildMovementWhere(
   }
 
   if (filters?.type) where.type = filters.type;
-  if (filters?.status) where.status = filters.status;
+
+  if (filters?.status) {
+    const validMovementStatuses = Object.values(MovementStatus);
+    if (validMovementStatuses.includes(filters.status as any)) {
+      where.status = filters.status;
+    } else {
+      // status existe só em TransferStatus (ex.: RECUSADO) → Movements vazios
+      where.id = { in: ["__none__"] };
+    }
+  }
+
   if (filters?.createdById) where.createdById = filters.createdById;
   if (filters?.productId) where.productId = filters.productId;
 
@@ -71,9 +86,10 @@ async function buildMovementWhere(
 
 /**
  * 🔹 Where de Transfer (visibilidade + filtros).
+ * - type: Transfer não tem `type` → excluir Transfers quando filtro presente.
  * - status: só aplica se existir em TransferStatus; senão exclui Transfers.
- * - productId: via items.some (mantém todos os items no retorno — ponto 6).
- * - dateFrom/dateTo: em Transfer.createdAt (ponto 7).
+ * - productId: via items.some (mantém todos os items no retorno).
+ * - dateFrom/dateTo: em Transfer.createdAt.
  */
 function buildTransferWhere(
   filters: HistoryFilters | undefined,
@@ -95,6 +111,11 @@ function buildTransferWhere(
     where.createdAt = {};
     if (filters.dateFrom) where.createdAt.gte = new Date(filters.dateFrom);
     if (filters.dateTo) where.createdAt.lte = new Date(filters.dateTo);
+  }
+
+  // 🔹 type não existe em Transfer → excluir Transfers
+  if (filters?.type) {
+    return { where, include: false };
   }
 
   if (filters?.status) {
