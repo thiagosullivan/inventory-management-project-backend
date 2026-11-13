@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import { historyService } from "../../services/admin/historyService.js";
 import { HistoryFilters } from "../../types/history.types.js";
 import { MovementStatus, MovementType } from "../../generated/prisma/enums.js";
+import { sectorService } from "../../services/admin/sectorService.js";
 import { Role } from "../../generated/prisma/enums.js";
 
 /**
@@ -37,6 +38,19 @@ export const historyController = {
     try {
       const auth = requireAuth(req, res);
       if (!auth) return;
+
+      // 🔹 /history é só Almox/MANAGER (auditoria global)
+      const almoxarifadoId = await sectorService.getAlmoxarifadoId();
+      const isManager = auth.userRole === Role.MANAGER;
+      const isAlmoxarifadoStaff = auth.userSectorId === almoxarifadoId;
+      if (!isManager && !isAlmoxarifadoStaff) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Apenas STAFF do Almoxarifado ou MANAGER podem acessar o histórico",
+          code: "FORBIDDEN",
+        });
+      }
 
       // includeTransfers: aceita "true"/"false" na query
       let includeTransfers: boolean | undefined;

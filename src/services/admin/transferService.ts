@@ -610,10 +610,10 @@ export const transferService = {
         },
       });
 
-      // 5.2 Movements → CANCELADO
+      // 5.2 Movements → RECUSADO (destino recusou a remessa)
       await tx.movement.updateMany({
         where: { transferId },
-        data: { status: MovementStatus.CANCELADO },
+        data: { status: MovementStatus.RECUSADO },
       });
 
       // 5.3 Devolver estoque + StockHistory por item

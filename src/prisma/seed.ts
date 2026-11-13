@@ -737,6 +737,377 @@ async function main() {
   }
 
   // ============================================
+  // 8. DADOS DE TESTE (cobrir todos os tipos/status)
+  // ============================================
+
+  console.log("\n🧪 Criando dados de teste (tipos/status variados)...");
+
+  const productsByName = new Map(
+    (await prisma.product.findMany()).map((p) => [p.name, p]),
+  );
+
+  function prodId(name: string): string {
+    const p = productsByName.get(name);
+    if (!p) throw new Error(`Produto não encontrado: ${name}`);
+    return p.id;
+  }
+
+  // 8.1 — Transfer RECUSADO (destino recusou) → Movement TRANSFERENCIA RECUSADO
+  const existingRecusada = await prisma.transfer.findFirst({
+    where: {
+      toSectorId: sectorId("Escola"),
+      status: TransferStatus.RECUSADO,
+    },
+  });
+  if (!existingRecusada) {
+    const t = await prisma.$transaction(async (tx) => {
+      const created = await tx.transfer.create({
+        data: {
+          fromSectorId: sectorId("Almoxarifado"),
+          toSectorId: sectorId("Escola"),
+          status: TransferStatus.RECUSADO,
+          reason: "Remessa de teste (recusada)",
+          refusalReason: "Sem espaço para estoque",
+          refusedById: staffEscola.id,
+          refusedAt: new Date(),
+          createdById: staffAlmox.id,
+          items: {
+            create: [{ productId: prodId("Papel A4 75g"), quantity: 2 }],
+          },
+        },
+      });
+
+      const product = await tx.product.findUnique({
+        where: { id: prodId("Papel A4 75g") },
+        select: { quantity: true, avgPriceInCents: true },
+      });
+      if (!product) throw new Error("Produto não encontrado");
+
+      const newQty = product.quantity - 2;
+
+      await tx.movement.create({
+        data: {
+          productId: prodId("Papel A4 75g"),
+          type: MovementType.TRANSFERENCIA,
+          quantity: -2,
+          reason: `Remessa ${created.id} — Escola`,
+          status: MovementStatus.RECUSADO,
+          fromSectorId: sectorId("Almoxarifado"),
+          toSectorId: sectorId("Escola"),
+          transferId: created.id,
+          unitPriceInCents: product.avgPriceInCents,
+          createdById: staffAlmox.id,
+        },
+      });
+
+      await tx.product.update({
+        where: { id: prodId("Papel A4 75g") },
+        data: { quantity: newQty },
+      });
+
+      await tx.stockHistory.create({
+        data: {
+          productId: prodId("Papel A4 75g"),
+          oldQuantity: product.quantity,
+          newQuantity: newQty,
+          changedById: staffAlmox.id,
+          reason: `Remessa ${created.id} recusada (devolvido)`,
+        },
+      });
+
+      return created;
+    });
+    console.log(
+      `   ✅ Transfer RECUSADO: ${t.id} (Movement TRANSFERENCIA RECUSADO)`,
+    );
+  } else {
+    console.log(`   ℹ️ Transfer RECUSADO já existe (${existingRecusada.id})`);
+  }
+
+  // 8.2 — Transfer CANCELADO (Almox cancelou) → Movement TRANSFERENCIA CANCELADO
+  const existingCancelada = await prisma.transfer.findFirst({
+    where: {
+      toSectorId: sectorId("Cozinha"),
+      status: TransferStatus.CANCELADO,
+    },
+  });
+  if (!existingCancelada) {
+    const t = await prisma.$transaction(async (tx) => {
+      const created = await tx.transfer.create({
+        data: {
+          fromSectorId: sectorId("Almoxarifado"),
+          toSectorId: sectorId("Cozinha"),
+          status: TransferStatus.CANCELADO,
+          cancelReason: "Item errado",
+          cancelledById: staffAlmox.id,
+          cancelledAt: new Date(),
+          createdById: staffAlmox.id,
+          items: {
+            create: [{ productId: prodId("Água Sanitária 1L"), quantity: 1 }],
+          },
+        },
+      });
+
+      const product = await tx.product.findUnique({
+        where: { id: prodId("Água Sanitária 1L") },
+        select: { quantity: true, avgPriceInCents: true },
+      });
+      if (!product) throw new Error("Produto não encontrado");
+
+      const newQty = product.quantity - 1;
+
+      await tx.movement.create({
+        data: {
+          productId: prodId("Água Sanitária 1L"),
+          type: MovementType.TRANSFERENCIA,
+          quantity: -1,
+          reason: `Remessa ${created.id} — Cozinha`,
+          status: MovementStatus.CANCELADO,
+          fromSectorId: sectorId("Almoxarifado"),
+          toSectorId: sectorId("Cozinha"),
+          transferId: created.id,
+          unitPriceInCents: product.avgPriceInCents,
+          createdById: staffAlmox.id,
+        },
+      });
+
+      await tx.product.update({
+        where: { id: prodId("Água Sanitária 1L") },
+        data: { quantity: newQty },
+      });
+
+      return created;
+    });
+    console.log(
+      `   ✅ Transfer CANCELADO: ${t.id} (Movement TRANSFERENCIA CANCELADO)`,
+    );
+  } else {
+    console.log(`   ℹ️ Transfer CANCELADO já existe (${existingCancelada.id})`);
+  }
+
+  // 8.3 — Transfer CONCLUIDO → Movement TRANSFERENCIA + SAIDA CONCLUIDO
+  const existingConcluida = await prisma.transfer.findFirst({
+    where: {
+      toSectorId: sectorId("Cozinha"),
+      status: TransferStatus.CONCLUIDO,
+    },
+  });
+  if (!existingConcluida) {
+    const t = await prisma.$transaction(async (tx) => {
+      const created = await tx.transfer.create({
+        data: {
+          fromSectorId: sectorId("Almoxarifado"),
+          toSectorId: sectorId("Cozinha"),
+          status: TransferStatus.CONCLUIDO,
+          confirmedById: staffCozinha.id,
+          confirmedAt: new Date(),
+          createdById: staffAlmox.id,
+          items: {
+            create: [
+              { productId: prodId("Detergente Líquido 500ml"), quantity: 5 },
+            ],
+          },
+        },
+      });
+
+      const product = await tx.product.findUnique({
+        where: { id: prodId("Detergente Líquido 500ml") },
+        select: { quantity: true, avgPriceInCents: true },
+      });
+      if (!product) throw new Error("Produto não encontrado");
+
+      const newQty = product.quantity - 5;
+
+      // TRANSFERENCIA (criação)
+      await tx.movement.create({
+        data: {
+          productId: prodId("Detergente Líquido 500ml"),
+          type: MovementType.TRANSFERENCIA,
+          quantity: -5,
+          reason: `Remessa ${created.id} — Cozinha`,
+          status: MovementStatus.CONCLUIDO,
+          fromSectorId: sectorId("Almoxarifado"),
+          toSectorId: sectorId("Cozinha"),
+          transferId: created.id,
+          unitPriceInCents: product.avgPriceInCents,
+          createdById: staffAlmox.id,
+        },
+      });
+
+      // SAIDA (confirmação)
+      await tx.movement.create({
+        data: {
+          productId: prodId("Detergente Líquido 500ml"),
+          type: MovementType.SAIDA,
+          quantity: -5,
+          reason: `Remessa ${created.id} confirmada — Cozinha`,
+          status: MovementStatus.CONCLUIDO,
+          fromSectorId: sectorId("Almoxarifado"),
+          toSectorId: sectorId("Cozinha"),
+          transferId: created.id,
+          unitPriceInCents: product.avgPriceInCents,
+          createdById: staffCozinha.id,
+        },
+      });
+
+      await tx.product.update({
+        where: { id: prodId("Detergente Líquido 500ml") },
+        data: { quantity: newQty },
+      });
+
+      return created;
+    });
+    console.log(
+      `   ✅ Transfer CONCLUIDO: ${t.id} (Movement TRANSFERENCIA + SAIDA CONCLUIDO)`,
+    );
+  } else {
+    console.log(`   ℹ️ Transfer CONCLUIDO já existe (${existingConcluida.id})`);
+  }
+
+  // 8.4 — SAIDA manual (transferId: null) → R2b
+  const existingSaidaManual = await prisma.movement.findFirst({
+    where: {
+      type: MovementType.SAIDA,
+      transferId: null,
+    },
+  });
+  if (!existingSaidaManual) {
+    await prisma.$transaction(async (tx) => {
+      const product = await tx.product.findUnique({
+        where: { id: prodId("Caneta Esferográfica Azul") },
+        select: { quantity: true, avgPriceInCents: true },
+      });
+      if (!product) throw new Error("Produto não encontrado");
+
+      const newQty = product.quantity - 3;
+      if (newQty < 0) throw new Error("Estoque insuficiente para SAIDA manual");
+
+      const movement = await tx.movement.create({
+        data: {
+          productId: prodId("Caneta Esferográfica Azul"),
+          type: MovementType.SAIDA,
+          quantity: -3,
+          reason: "Saída manual (seed) — conferência",
+          status: MovementStatus.CONCLUIDO,
+          fromSectorId: sectorId("Almoxarifado"),
+          unitPriceInCents: product.avgPriceInCents,
+          createdById: staffAlmox.id,
+        },
+      });
+
+      await tx.product.update({
+        where: { id: prodId("Caneta Esferográfica Azul") },
+        data: { quantity: newQty },
+      });
+
+      await tx.stockHistory.create({
+        data: {
+          productId: prodId("Caneta Esferográfica Azul"),
+          oldQuantity: product.quantity,
+          newQuantity: newQty,
+          movementId: movement.id,
+          changedById: staffAlmox.id,
+          reason: "Saída manual (seed)",
+        },
+      });
+    });
+    console.log("   ✅ SAIDA manual criada (transferId: null) — testa R2b");
+  } else {
+    console.log(`   ℹ️ SAIDA manual já existe (${existingSaidaManual.id})`);
+  }
+
+  // 8.5 — AJUSTE (Almox)
+  const existingAjuste = await prisma.movement.findFirst({
+    where: { type: MovementType.AJUSTE },
+  });
+  if (!existingAjuste) {
+    await prisma.$transaction(async (tx) => {
+      const product = await tx.product.findUnique({
+        where: { id: prodId("Parafuso 3x20mm") },
+        select: { quantity: true, avgPriceInCents: true },
+      });
+      if (!product) throw new Error("Produto não encontrado");
+
+      const delta = 10; // ajuste positivo
+      const newQty = product.quantity + delta;
+
+      const movement = await tx.movement.create({
+        data: {
+          productId: prodId("Parafuso 3x20mm"),
+          type: MovementType.AJUSTE,
+          quantity: delta,
+          reason: "Ajuste de inventário (seed)",
+          status: MovementStatus.CONCLUIDO,
+          fromSectorId: sectorId("Almoxarifado"),
+          unitPriceInCents: product.avgPriceInCents,
+          createdById: staffAlmox.id,
+        },
+      });
+
+      await tx.product.update({
+        where: { id: prodId("Parafuso 3x20mm") },
+        data: { quantity: newQty },
+      });
+
+      await tx.stockHistory.create({
+        data: {
+          productId: prodId("Parafuso 3x20mm"),
+          oldQuantity: product.quantity,
+          newQuantity: newQty,
+          movementId: movement.id,
+          changedById: staffAlmox.id,
+          reason: "Ajuste de inventário (seed)",
+        },
+      });
+    });
+    console.log("   ✅ AJUSTE criado (Almox) — testa filtro type=AJUSTE");
+  } else {
+    console.log(`   ℹ️ AJUSTE já existe (${existingAjuste.id})`);
+  }
+
+  // 8.6 — PurchaseRequest RECUSADO e CANCELADO
+  const existingReqRecusado = await prisma.purchaseRequest.findFirst({
+    where: { status: PurchaseRequestStatus.RECUSADO },
+  });
+  if (!existingReqRecusado) {
+    await prisma.purchaseRequest.create({
+      data: {
+        sectorId: sectorId("Escola"),
+        status: PurchaseRequestStatus.RECUSADO,
+        refusalReason: "Item fora do catálogo",
+        refusedById: staffAlmox.id,
+        refusedAt: new Date(),
+        createdById: staffEscola.id,
+        items: {
+          create: [{ productId: prodId("Giz de Cera"), quantity: 1 }],
+        },
+      },
+    });
+    console.log("   ✅ PurchaseRequest RECUSADO criado");
+  } else {
+    console.log(`   ℹ️ PurchaseRequest RECUSADO já existe`);
+  }
+
+  const existingReqCancelado = await prisma.purchaseRequest.findFirst({
+    where: { status: PurchaseRequestStatus.CANCELADO },
+  });
+  if (!existingReqCancelado) {
+    await prisma.purchaseRequest.create({
+      data: {
+        sectorId: sectorId("Cozinha"),
+        status: PurchaseRequestStatus.CANCELADO,
+        createdById: staffCozinha.id,
+        items: {
+          create: [{ productId: prodId("Arroz Integral 1kg"), quantity: 2 }],
+        },
+      },
+    });
+    console.log("   ✅ PurchaseRequest CANCELADO criado");
+  } else {
+    console.log(`   ℹ️ PurchaseRequest CANCELADO já existe`);
+  }
+
+  // ============================================
   // 7. RESUMO
   // ============================================
   console.log("\n📊 ===== RESUMO =====");
@@ -757,6 +1128,9 @@ async function main() {
   console.log(`📝 Pedido de exemplo: ${sampleRequest.id} (Cozinha, PENDENTE)`);
   console.log(
     `🚚 Remessa de exemplo: criada (Almoxarifado → Cozinha, PENDENTE)`,
+  );
+  console.log(
+    "🧪 Dados de teste: Transfer PENDENTE/CONCLUIDO/CANCELADO/RECUSADO, Movement ENTRADA/SAIDA/SAIDA-manual/AJUSTE/TRANSFERENCIA, PurchaseRequest PENDENTE/EM_ATENDIMENTO/ATENDIDO/RECUSADO/CANCELADO",
   );
   console.log("\n✅ Seed concluído com sucesso!");
 }

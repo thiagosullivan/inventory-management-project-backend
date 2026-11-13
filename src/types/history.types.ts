@@ -1,5 +1,9 @@
 // src/types/history.types.ts
-import { MovementStatus, MovementType } from "../generated/prisma/enums.js";
+import {
+  MovementStatus,
+  MovementType,
+  TransferStatus,
+} from "../generated/prisma/enums.js";
 
 // =============================
 // Enums auxiliares (espelho)
@@ -10,6 +14,8 @@ export type HistorySortOrder = "asc" | "desc";
 // =============================
 // Filtros
 // =============================
+
+export type HistoryStatusFilter = MovementStatus | TransferStatus;
 
 /**
  * 🔹 Filtros de /admin/history
@@ -22,7 +28,7 @@ export type HistorySortOrder = "asc" | "desc";
  */
 export interface HistoryFilters {
   type?: MovementType;
-  status?: MovementStatus;
+  status?: HistoryStatusFilter;
   createdById?: string;
   productId?: string;
   dateFrom?: string;
