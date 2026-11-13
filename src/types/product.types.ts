@@ -157,3 +157,58 @@ export interface StockSummary {
 export interface NextBarcodeResponse {
   barcode: string;
 }
+
+// =============================
+// Histórico de estoque (StockHistory)
+// =============================
+
+/**
+ * 🔹 Ref enxuta do Movement vinculado ao StockHistory.
+ * Usada em GET /admin/products/:id/history.
+ * Inclui campos para o front abrir TransferDetailsDialog (transferId),
+ * MovementDetailsDialog (status/reason/setores) e mostrar motivo.
+ */
+export interface StockHistoryMovementRef {
+  id: string;
+  type: MovementType;
+  quantity: number;
+  unitPriceInCents: number | null;
+  supplier: string | null;
+  // 🔹 NOVOS — enriquecem o histórico
+  status: MovementStatus;
+  reason: string | null;
+  transferId: string | null;
+  createdAt: Date;
+  fromSector: {
+    id: string;
+    name: string;
+    isWarehouse: boolean;
+  } | null;
+  toSector: {
+    id: string;
+    name: string;
+    isWarehouse: boolean;
+  } | null;
+}
+
+export interface StockHistoryEntry {
+  id: string;
+  productId: string;
+  oldQuantity: number;
+  newQuantity: number;
+  movementId: string | null;
+  changedById: string;
+  changedAt: Date;
+  reason: string | null;
+  changedBy: {
+    id: string;
+    name: string | null;
+    email: string;
+  };
+  movement: StockHistoryMovementRef | null;
+}
+
+export interface ProductHistoryResponse {
+  history: StockHistoryEntry[];
+  total: number;
+}

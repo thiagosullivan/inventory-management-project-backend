@@ -9,6 +9,7 @@ import {
   MovementData,
   MovementResponse,
   ProductFilters,
+  ProductHistoryResponse,
   ProductResponse,
   ProductsListResponse,
   StockSummary,
@@ -868,7 +869,7 @@ export const productService = {
     productId: string,
     limit: number = 20,
     offset: number = 0,
-  ): Promise<{ history: any[]; total: number }> {
+  ): Promise<ProductHistoryResponse> {
     const [history, total] = await Promise.all([
       prisma.stockHistory.findMany({
         where: { productId },
@@ -881,6 +882,15 @@ export const productService = {
               quantity: true,
               unitPriceInCents: true,
               supplier: true,
+              // 🔹 NOVOS
+              status: true,
+              reason: true,
+              transferId: true,
+              createdAt: true,
+              fromSector: {
+                select: { id: true, name: true, isWarehouse: true },
+              },
+              toSector: { select: { id: true, name: true, isWarehouse: true } },
             },
           },
         },
