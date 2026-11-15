@@ -219,16 +219,21 @@ export const productService = {
       const thirtyDaysFromNow = new Date();
       thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
       where.expiryDate = { gte: now, lte: thirtyDaysFromNow };
+      // 🔹 só produto com estoque
+      where.quantity = { ...where.quantity, gt: 0 };
     }
 
     if (filters?.isExpired) {
       const now = new Date();
       where.expiryDate = { lt: now };
+      // 🔹 só produto com estoque
+      where.quantity = { ...where.quantity, gt: 0 };
     }
 
     if (filters?.isLowStock) {
       where.AND = [
         { minStock: { not: null } },
+        { quantity: { gt: 0 } },
         { quantity: { lte: prisma.product.fields.minStock } },
       ];
     }
