@@ -305,7 +305,6 @@ export const dashboardService = {
         maxStock: true,
         expiryDate: true,
         category: {
-          // 🔹 ajustado
           select: {
             id: true,
             name: true,
@@ -372,6 +371,7 @@ export const dashboardService = {
     });
 
     // ===== 3. EXPIRY STATUS =====
+    // 🔹 só conta se quantity > 0 (produto sem estoque não "vence")
     let expired = 0;
     let expiringSoon = 0;
     let valid = 0;
@@ -382,6 +382,9 @@ export const dashboardService = {
         noExpiryDate++;
         return;
       }
+      // 🔹 fora do escopo de "válido/vencendo/vencido" se quantity === 0
+      if (p.quantity === 0) return;
+
       const expiryDate = new Date(p.expiryDate);
       if (expiryDate < now) {
         expired++;
@@ -394,7 +397,7 @@ export const dashboardService = {
 
     // ===== 4. DISTRIBUTION =====
 
-    // Por categoria  🔹 ajustado
+    // Por categoria
     const categoryMap = new Map<
       string,
       { categoryId: string; categoryName: string; count: number; units: number }
@@ -424,7 +427,7 @@ export const dashboardService = {
       }))
       .sort((a, b) => b.count - a.count);
 
-    // Por localização (sem alteração)
+    // Por localização
     const locationMap = new Map<string, { count: number; units: number }>();
     products.forEach((p) => {
       const location = p.location || "Não definido";
@@ -445,7 +448,7 @@ export const dashboardService = {
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
-    // Por fornecedor (sem alteração)
+    // Por fornecedor
     const supplierMap = new Map<string, { count: number; units: number }>();
     products.forEach((p) => {
       const supplier = p.supplier || "Não definido";
@@ -468,7 +471,6 @@ export const dashboardService = {
 
     // ===== 5. DETAILS =====
 
-    // 🔹 corrigido p.imageUrl (era p.id)
     const productsWithLowStock = products
       .filter(
         (p) =>
@@ -495,6 +497,8 @@ export const dashboardService = {
     const productsExpiringSoon = products
       .filter((p) => {
         if (!p.expiryDate) return false;
+        // 🔹 só produto com estoque
+        if (p.quantity === 0) return false;
         const expiryDate = new Date(p.expiryDate);
         return expiryDate >= now && expiryDate <= thirtyDaysFromNow;
       })
@@ -535,6 +539,8 @@ export const dashboardService = {
     const productsExpired = products
       .filter((p) => {
         if (!p.expiryDate) return false;
+        // 🔹 só produto com estoque
+        if (p.quantity === 0) return false;
         const expiryDate = new Date(p.expiryDate);
         return expiryDate < now;
       })
