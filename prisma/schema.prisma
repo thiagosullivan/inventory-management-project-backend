@@ -208,7 +208,7 @@ model Product {
   barcode         String    @unique(map: "product_barcode_key")
   description     String?
   quantity        Int       @default(0)
-  minStock        Int?      @default(5)
+  minStock        Int?      @default(0)
   maxStock        Int?
   expiryDate      DateTime?
   batchNumber     String?

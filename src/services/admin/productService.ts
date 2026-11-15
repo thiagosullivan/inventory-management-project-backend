@@ -121,7 +121,7 @@ export const productService = {
           priceInCents,
           avgPriceInCents: priceInCents, // primeira entrada: média = preço
           quantity,
-          minStock: data.minStock ?? 5,
+          minStock: data.minStock ?? 0,
           maxStock: data.maxStock ?? null,
           expiryDate: data.expiryDate ? new Date(data.expiryDate) : null,
           batchNumber: data.batchNumber?.trim() || null,
@@ -274,6 +274,7 @@ export const productService = {
     return prisma.product.findUnique({
       where: { id: productId },
       include: {
+        category: { select: { id: true, name: true, prefix: true } },
         createdBy: { select: { id: true, name: true, email: true } },
         updatedBy: { select: { id: true, name: true, email: true } },
         stockHistory: {
