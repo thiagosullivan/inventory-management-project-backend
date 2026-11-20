@@ -5,13 +5,44 @@ import { prisma } from "../../lib/prisma.js";
 import {
   BetterAuthUserResponse,
   CreateStaffUserData,
+  UpdateUserProfileData,
   UpdateUserSectorData,
   UserFilters,
   UserOption,
   UserResponse,
   UsersListResponse,
 } from "../../types/user.types.js";
-import { isManager, validateUserData } from "../../utils/validation.js";
+import {
+  isManager,
+  validateUserData,
+  validateUserName,
+} from "../../utils/validation.js";
+
+// 🔹 Fase 7.6 — errors tipados por código (o controller mapeia por prefixo)
+//    Não uso classe custom pra manter o padrão atual do projeto
+//    (throw new Error + controller olhando error.message.includes).
+//    Prefixos:
+//      CANNOT_DELETE_MANAGER → 400
+//      USER_HAS_ACTIVITY     → 409
+//      CANNOT_DEMOTE_SELF    → 400
+//      INVALID_NAME          → 400
+//    O `error.message` começa com o código, e o controller checa.
+
+const USER_RESPONSE_SELECT = {
+  id: true,
+  email: true,
+  name: true,
+  role: true,
+  isActive: true,
+  createdAt: true,
+  lastLogin: true,
+  image: true,
+  emailVerified: true,
+  sectorId: true,
+  sector: {
+    select: { id: true, name: true, isWarehouse: true },
+  },
+} as const;
 
 export const userService = {
   async createStaffUser(
@@ -23,12 +54,10 @@ export const userService = {
       throw new Error(`Dados inválidos: ${validation.errors.join(", ")}`);
     }
 
-    // 🔹 NOVO — sectorId obrigatório
     if (!data.sectorId) {
       throw new Error("Dados inválidos: setor é obrigatório");
     }
 
-    // verify if its a manager
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
       select: { role: true, id: true, email: true },
@@ -42,7 +71,6 @@ export const userService = {
       throw new Error("Apenas gerentes podem criar usuários");
     }
 
-    // 🔹 NOVO — valida se o setor existe
     const sector = await prisma.sector.findUnique({
       where: { id: data.sectorId },
       select: { id: true, isActive: true },
@@ -54,7 +82,6 @@ export const userService = {
       throw new Error("Setor está desativado");
     }
 
-    // verify if email exists
     const existing = await prisma.user.findUnique({
       where: { email: data.email },
       select: { id: true, email: true },
@@ -64,19 +91,17 @@ export const userService = {
       throw new Error(`Email ${data.email} já cadastrado`);
     }
 
-    // Create user with better auth
     const userResponse = await auth.api.signUpEmail({
       body: {
         email: data.email,
         name: data.name,
         password: data.password,
         image: data.image,
-        sectorId: data.sectorId, // 🔹 NOVO — obrigatório
+        sectorId: data.sectorId,
       },
       headers: new Headers(),
     });
 
-    // Update role and isActive
     if (userResponse.user?.id) {
       await prisma.user.update({
         where: { id: userResponse.user.id },
@@ -90,7 +115,6 @@ export const userService = {
     return userResponse as BetterAuthUserResponse;
   },
 
-  // List all users (only manager)
   async listUsers(
     adminId: string,
     filters?: UserFilters,
@@ -121,7 +145,6 @@ export const userService = {
       where.isActive = filters.isActive;
     }
 
-    // 🔹 NOVO — filtro por setor (Fase 7.5 vai usar)
     if (filters?.sectorId) {
       where.sectorId = filters.sectorId;
     }
@@ -133,21 +156,7 @@ export const userService = {
     const [users, total] = await Promise.all([
       prisma.user.findMany({
         where,
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          role: true,
-          isActive: true,
-          createdAt: true,
-          lastLogin: true,
-          image: true,
-          emailVerified: true,
-          sectorId: true, // 🔹 NOVO
-          sector: {
-            select: { id: true, name: true, isWarehouse: true },
-          }, // 🔹 NOVO
-        },
+        select: USER_RESPONSE_SELECT,
         orderBy: { createdAt: "desc" },
         skip,
         take: limit,
@@ -163,7 +172,6 @@ export const userService = {
     };
   },
 
-  // Get user by id
   async getUserById(
     userId: string,
     adminId: string,
@@ -177,29 +185,12 @@ export const userService = {
       throw new Error("Apenas gerentes podem visualizar usuários");
     }
 
-    const user = await prisma.user.findUnique({
+    return prisma.user.findUnique({
       where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
-        lastLogin: true,
-        image: true,
-        emailVerified: true,
-        sectorId: true, // 🔹 NOVO
-        sector: {
-          select: { id: true, name: true, isWarehouse: true },
-        }, // 🔹 NOVO
-      },
+      select: USER_RESPONSE_SELECT,
     });
-
-    return user;
   },
 
-  // toggle active (only manager)
   async toggleUserStatus(
     userId: string,
     adminId: string,
@@ -222,27 +213,13 @@ export const userService = {
       throw new Error("Usuário não encontrado");
     }
 
-    const updated = await prisma.user.update({
+    return prisma.user.update({
       where: { id: userId },
       data: { isActive: !user.isActive },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
-        lastLogin: true,
-        image: true,
-        emailVerified: true,
-        sectorId: true, // 🔹 NOVO
-      },
+      select: USER_RESPONSE_SELECT,
     });
-
-    return updated;
   },
 
-  // update role (only manager)
   async updateUserRole(
     userId: string,
     newRole: Role,
@@ -257,6 +234,11 @@ export const userService = {
       throw new Error("Apenas gerentes podem alterar cargos de usuários");
     }
 
+    // 🔹 Fase 7.6 — guard: não pode rebaixar a si mesmo
+    if (userId === adminId && newRole !== Role.MANAGER) {
+      throw new Error("CANNOT_DEMOTE_SELF: Você não pode rebaixar seu próprio usuário");
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { id: true },
@@ -266,27 +248,13 @@ export const userService = {
       throw new Error("Usuário não encontrado");
     }
 
-    const updated = await prisma.user.update({
+    return prisma.user.update({
       where: { id: userId },
       data: { role: newRole },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
-        lastLogin: true,
-        image: true,
-        emailVerified: true,
-        sectorId: true, // 🔹 NOVO
-      },
+      select: USER_RESPONSE_SELECT,
     });
-
-    return updated;
   },
 
-  // 🔹 NOVO — update sector (only manager)
   async updateUserSector(
     userId: string,
     data: UpdateUserSectorData,
@@ -325,30 +293,49 @@ export const userService = {
       throw new Error("Setor está desativado");
     }
 
-    const updated = await prisma.user.update({
+    return prisma.user.update({
       where: { id: userId },
       data: { sectorId: data.sectorId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
-        lastLogin: true,
-        image: true,
-        emailVerified: true,
-        sectorId: true,
-        sector: {
-          select: { id: true, name: true, isWarehouse: true },
-        },
-      },
+      select: USER_RESPONSE_SELECT,
     });
-
-    return updated;
   },
 
-  // Delete user (only manager)
+  // 🔹 NOVO (Fase 7.6) — PATCH /admin/users/:id/profile
+  async updateUserProfile(
+    userId: string,
+    data: UpdateUserProfileData,
+    adminId: string,
+  ): Promise<UserResponse> {
+    const admin = await prisma.user.findUnique({
+      where: { id: adminId },
+      select: { role: true },
+    });
+
+    if (!admin || !isManager(admin.role)) {
+      throw new Error("Apenas gerentes podem alterar dados de usuários");
+    }
+
+    const validation = validateUserName(data.name);
+    if (!validation.isValid) {
+      throw new Error(`INVALID_NAME: ${validation.errors.join(", ")}`);
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+
+    if (!user) {
+      throw new Error("Usuário não encontrado");
+    }
+
+    return prisma.user.update({
+      where: { id: userId },
+      data: { name: data.name.trim() },
+      select: USER_RESPONSE_SELECT,
+    });
+  },
+
   async deleteUser(userId: string, adminId: string): Promise<UserResponse> {
     const admin = await prisma.user.findUnique({
       where: { id: adminId },
@@ -359,42 +346,36 @@ export const userService = {
       throw new Error("Apenas gerentes podem deletar usuários");
     }
 
-    const userExists = await prisma.user.findUnique({
+    // 🔹 Fase 7.6 — guards antes do delete
+    const target = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true },
+      select: { id: true, lastLogin: true, emailVerified: true, role: true },
     });
 
-    if (!userExists) {
+    if (!target) {
       throw new Error("Usuário não encontrado");
     }
 
-    const deletedUser = await prisma.user.delete({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        isActive: true,
-        createdAt: true,
-        lastLogin: true,
-        image: true,
-        emailVerified: true,
-        sectorId: true, // 🔹 NOVO
-      },
-    });
+    if (target.role === Role.MANAGER) {
+      throw new Error("CANNOT_DELETE_MANAGER: Não é possível excluir um gerente");
+    }
 
-    return deletedUser;
+    if (target.lastLogin != null || target.emailVerified) {
+      throw new Error(
+        "USER_HAS_ACTIVITY: Usuário já teve atividade — use inativar",
+      );
+    }
+
+    return prisma.user.delete({
+      where: { id: userId },
+      select: USER_RESPONSE_SELECT,
+    });
   },
 
-  /**
-   * List user options for dropdowns/selects.
-   * GET /admin/users/options (STAFF + MANAGER)
-   */
   async getUserOptions(): Promise<UserOption[]> {
     const users = await prisma.user.findMany({
       where: {
-        createdProducts: { some: {} }, // 🔹 só quem criou pelo menos 1 produto
+        createdProducts: { some: {} },
       },
       select: {
         id: true,
