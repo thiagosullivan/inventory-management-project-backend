@@ -131,10 +131,16 @@ export const userService = {
     const where: any = {};
 
     if (filters?.search) {
-      where.OR = [
-        { email: { contains: filters.search, mode: "insensitive" } },
-        { name: { contains: filters.search, mode: "insensitive" } },
-      ];
+      // 🔹 unaccent + ILIKE via $queryRaw (mesmo padrão do /history).
+      //    Prisma `contains` + mode insensitive resolve case, mas NÃO acento.
+      //    Aqui "joao" casa com "João".
+      const rows = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT u.id FROM "User" u
+        WHERE unaccent(coalesce(u.name, '')) ILIKE unaccent(${`%${filters.search}%`})
+           OR unaccent(coalesce(u.email, '')) ILIKE unaccent(${`%${filters.search}%`})
+      `;
+      const ids = rows.map((r) => r.id);
+      where.id = { in: ids.length > 0 ? ids : ["__none__"] };
     }
 
     if (filters?.role) {
