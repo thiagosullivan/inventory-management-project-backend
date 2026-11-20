@@ -192,33 +192,42 @@ export const userService = {
   },
 
   async toggleUserStatus(
-    userId: string,
-    adminId: string,
-  ): Promise<UserResponse> {
-    const admin = await prisma.user.findUnique({
-      where: { id: adminId },
-      select: { role: true },
-    });
+  userId: string,
+  adminId: string,
+): Promise<UserResponse> {
+  const admin = await prisma.user.findUnique({
+    where: { id: adminId },
+    select: { role: true },
+  });
 
-    if (!admin || !isManager(admin.role)) {
-      throw new Error("Apenas gerentes podem alterar status de usuários");
-    }
+  if (!admin || !isManager(admin.role)) {
+    throw new Error("Apenas gerentes podem alterar status de usuários");
+  }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, isActive: true },
-    });
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, isActive: true },
+  });
 
-    if (!user) {
-      throw new Error("Usuário não encontrado");
-    }
+  if (!user) {
+    throw new Error("Usuário não encontrado");
+  }
 
-    return prisma.user.update({
-      where: { id: userId },
-      data: { isActive: !user.isActive },
-      select: USER_RESPONSE_SELECT,
-    });
-  },
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: { isActive: !user.isActive },
+    select: USER_RESPONSE_SELECT,
+  });
+
+  // 🔹 Fase 7.6 — ao inativar, revoga todas as sessões do usuário.
+  //    Sem isso, a sessão antiga continua válida no banco e o usuário
+  //    reativado entraria sem senha (sessão "fantasma").
+  if (!updated.isActive) {
+    await prisma.session.deleteMany({ where: { userId } });
+  }
+
+  return updated;
+},
 
   async updateUserRole(
     userId: string,
