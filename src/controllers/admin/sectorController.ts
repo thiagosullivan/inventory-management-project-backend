@@ -182,7 +182,6 @@ export const sectorController = {
         });
       }
 
-      // 🔹 Opção A — isWarehouse é imutável (rejeitar no controller)
       const { isWarehouse, ...rest } = req.body;
       if (isWarehouse !== undefined) {
         return res.status(400).json({
@@ -302,7 +301,16 @@ export const sectorController = {
         });
       }
 
-      if (error.message.includes("vinculado")) {
+      // 🔹 Fase 7.7 — mensagens do guard de dependências:
+      //    - "vinculado(s)" (users)
+      //    - "remessas vinculadas" (transfers)
+      //    - "pedidos vinculados" (purchaseRequests)
+      //    - "movimentações vinculadas" (movementsFrom/To)
+      //    Todas caem em SECTOR_HAS_RELATIONS (409).
+      if (
+        error.message.includes("vinculado") ||
+        error.message.includes("movimentações")
+      ) {
         return res.status(409).json({
           success: false,
           message: error.message,
