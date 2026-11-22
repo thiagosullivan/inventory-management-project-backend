@@ -112,6 +112,24 @@ export const userService = {
       });
     }
 
+    // 🔹 Fase 7.9 — dispara OTP de verificação pro e-mail do novo user.
+    //    Explícito (Opção A) em vez de depender de sendOnSignUp global.
+    //    O user nasce emailVerified: false; o MANAGER não verifica nada.
+    if (userResponse.user?.email) {
+      try {
+        await auth.api.sendVerificationOTP({
+          body: {
+            email: userResponse.user.email,
+            type: "email-verification",
+          },
+        });
+      } catch (err) {
+        // Não falha a criação se o e-mail não sair (ex.: SMTP fora do ar).
+        // O user pode reenviar o código depois via /verify-email.
+        console.error("⚠️ Falha ao enviar OTP de verificação:", err);
+      }
+    }
+
     return userResponse as BetterAuthUserResponse;
   },
 
@@ -198,42 +216,42 @@ export const userService = {
   },
 
   async toggleUserStatus(
-  userId: string,
-  adminId: string,
-): Promise<UserResponse> {
-  const admin = await prisma.user.findUnique({
-    where: { id: adminId },
-    select: { role: true },
-  });
+    userId: string,
+    adminId: string,
+  ): Promise<UserResponse> {
+    const admin = await prisma.user.findUnique({
+      where: { id: adminId },
+      select: { role: true },
+    });
 
-  if (!admin || !isManager(admin.role)) {
-    throw new Error("Apenas gerentes podem alterar status de usuários");
-  }
+    if (!admin || !isManager(admin.role)) {
+      throw new Error("Apenas gerentes podem alterar status de usuários");
+    }
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, isActive: true },
-  });
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, isActive: true },
+    });
 
-  if (!user) {
-    throw new Error("Usuário não encontrado");
-  }
+    if (!user) {
+      throw new Error("Usuário não encontrado");
+    }
 
-  const updated = await prisma.user.update({
-    where: { id: userId },
-    data: { isActive: !user.isActive },
-    select: USER_RESPONSE_SELECT,
-  });
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { isActive: !user.isActive },
+      select: USER_RESPONSE_SELECT,
+    });
 
-  // 🔹 Fase 7.6 — ao inativar, revoga todas as sessões do usuário.
-  //    Sem isso, a sessão antiga continua válida no banco e o usuário
-  //    reativado entraria sem senha (sessão "fantasma").
-  if (!updated.isActive) {
-    await prisma.session.deleteMany({ where: { userId } });
-  }
+    // 🔹 Fase 7.6 — ao inativar, revoga todas as sessões do usuário.
+    //    Sem isso, a sessão antiga continua válida no banco e o usuário
+    //    reativado entraria sem senha (sessão "fantasma").
+    if (!updated.isActive) {
+      await prisma.session.deleteMany({ where: { userId } });
+    }
 
-  return updated;
-},
+    return updated;
+  },
 
   async updateUserRole(
     userId: string,
@@ -251,7 +269,9 @@ export const userService = {
 
     // 🔹 Fase 7.6 — guard: não pode rebaixar a si mesmo
     if (userId === adminId && newRole !== Role.MANAGER) {
-      throw new Error("CANNOT_DEMOTE_SELF: Você não pode rebaixar seu próprio usuário");
+      throw new Error(
+        "CANNOT_DEMOTE_SELF: Você não pode rebaixar seu próprio usuário",
+      );
     }
 
     const user = await prisma.user.findUnique({
@@ -372,7 +392,9 @@ export const userService = {
     }
 
     if (target.role === Role.MANAGER) {
-      throw new Error("CANNOT_DELETE_MANAGER: Não é possível excluir um gerente");
+      throw new Error(
+        "CANNOT_DELETE_MANAGER: Não é possível excluir um gerente",
+      );
     }
 
     if (target.lastLogin != null || target.emailVerified) {
