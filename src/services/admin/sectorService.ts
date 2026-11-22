@@ -193,6 +193,7 @@ export const sectorService = {
    * Atualizar setor (only MANAGER)
    * - isWarehouse é IMUTÁVEL (não pode ser alterado)
    * - Nome pode ser alterado (valida duplicata)
+   * - 🔹 Fase 7.8 — Almoxarifado (isWarehouse: true) NÃO pode ser inativado
    */
   async updateSector(
     sectorId: string,
@@ -242,6 +243,14 @@ export const sectorService = {
     }
 
     if (data.isActive !== undefined) {
+      // 🔹 Fase 7.8 — Almoxarifado (ponto 0) não pode ser inativado.
+      //    Inativar quebra fluxos de pedido/remessa (getAlmoxarifadoId acha,
+      //    mas operações que dependem do setor ativo falham).
+      if (data.isActive === false && existing.isWarehouse) {
+        throw new Error(
+          `O setor "${existing.name}" é o Almoxarifado (ponto 0) e não pode ser inativado`,
+        );
+      }
       updateData.isActive = data.isActive;
     }
 

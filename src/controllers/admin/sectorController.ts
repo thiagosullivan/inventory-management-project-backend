@@ -159,6 +159,7 @@ export const sectorController = {
    * Update sector (only MANAGER)
    * PATCH /api/admin/sectors/:id
    * 🔹 isWarehouse é imutável — rejeita se vier no payload (Opção A)
+   * 🔹 Fase 7.8 — Almoxarifado (isWarehouse: true) não pode ser inativado
    */
   async updateSector(req: Request, res: Response) {
     try {
@@ -215,6 +216,15 @@ export const sectorController = {
       });
     } catch (error: any) {
       console.error("❌ Erro ao atualizar setor:", error);
+
+      // 🔹 Fase 7.8 — Almoxarifado não pode ser inativado
+      if (error.message.includes("não pode ser inativado")) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+          code: "CANNOT_DEACTIVATE_WAREHOUSE",
+        });
+      }
 
       if (error.message.includes("Setor não encontrado")) {
         return res.status(404).json({
