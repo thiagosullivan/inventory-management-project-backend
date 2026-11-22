@@ -1,7 +1,7 @@
 // src/lib/mailer.ts
 import nodemailer from "nodemailer";
+import type { Transporter } from "nodemailer";
 
-type Transporter = nodemailer.Transporter;
 let cached: Transporter | null = null;
 
 /**
