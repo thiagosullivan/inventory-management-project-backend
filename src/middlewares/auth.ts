@@ -1,3 +1,4 @@
+// src/middlewares/auth.ts
 import { Request, Response, NextFunction } from "express";
 import { auth } from "../lib/auth.js";
 import { AuthenticatedUser } from "../types/user.types.js";
@@ -67,7 +68,7 @@ export const authenticate = async (
       emailVerified: fullUser.emailVerified || false,
       isActive: true,
       sectorId: fullUser.sectorId,
-      sector: fullUser.sector, // 🔹
+      sector: fullUser.sector,
     };
 
     next();
