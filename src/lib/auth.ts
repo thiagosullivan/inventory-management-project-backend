@@ -101,13 +101,21 @@ export const auth = betterAuth({
         });
 
         if (!user) {
-          console.warn(
-            `⚠️ OTP solicitado para e-mail não cadastrado: ${email}`,
-          );
+          if (type === "change-email") {
+            await sendOtpEmail({
+              to: email,
+              userName: "usuário",
+              otp,
+              type: "change-email",
+              newEmail: email, // 🔹 o OTP vai para o novo e-mail
+            });
+            return;
+          }
+          console.warn(`⚠️ OTP não enviado (e-mail não cadastrado): ${email}`);
           return;
         }
 
-        const templateType: "email-verification" | "forget-password" =
+        const templateType =
           type === "forget-password" ? "forget-password" : "email-verification";
 
         await sendOtpEmail({
