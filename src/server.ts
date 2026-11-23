@@ -31,7 +31,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 app.use("/api", apiRouter);
-app.use("/me", meRoutes);
+app.use("/api/me", meRoutes);
 
 app.listen(port, () => {
   console.log(`🚀 Servidor rodando em http://localhost:${port}`);
