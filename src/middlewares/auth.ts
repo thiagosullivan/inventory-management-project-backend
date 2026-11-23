@@ -13,53 +13,41 @@ declare global {
   }
 }
 
-export const authenticate = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const session = await auth.api.getSession({
-      headers: new Headers(req.headers as Record<string, string>),
-    });
-
-    if (!session) {
-      return res.status(401).json({
-        message: "Sessão inválida ou expirada. Faça login novamente.",
-      });
+/**
+ * 🔹 Fase 8 — Helper compartilhado entre Express e Socket.io.
+ * Recebe Headers no formato Web (undici) e devolve o AuthenticatedUser ou um motivo de falha.
+ */
+export async function getSessionUser(headers: Headers): Promise<
+  | { ok: true; user: AuthenticatedUser }
+  | {
+      ok: false;
+      reason: "UNAUTHENTICATED" | "USER_INACTIVE" | "USER_NOT_FOUND";
     }
+> {
+  const session = await auth.api.getSession({ headers });
+  if (!session) return { ok: false, reason: "UNAUTHENTICATED" };
 
-    const fullUser = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        image: true,
-        emailVerified: true,
-        isActive: true,
-        sectorId: true,
-        sector: {
-          select: { id: true, name: true, isWarehouse: true },
-        },
-      },
-    });
+  const fullUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      image: true,
+      emailVerified: true,
+      isActive: true,
+      sectorId: true,
+      sector: { select: { id: true, name: true, isWarehouse: true } },
+    },
+  });
 
-    if (!fullUser) {
-      return res.status(401).json({
-        message: "Usuário não encontrado",
-      });
-    }
+  if (!fullUser) return { ok: false, reason: "USER_NOT_FOUND" };
+  if (!fullUser.isActive) return { ok: false, reason: "USER_INACTIVE" };
 
-    if (!fullUser.isActive) {
-      return res.status(403).json({
-        message: "Usuário desativado",
-        code: "USER_INACTIVE",
-      });
-    }
-
-    req.user = {
+  return {
+    ok: true,
+    user: {
       id: fullUser.id,
       email: fullUser.email,
       name: fullUser.name || "",
@@ -69,8 +57,36 @@ export const authenticate = async (
       isActive: true,
       sectorId: fullUser.sectorId,
       sector: fullUser.sector,
-    };
+    },
+  };
+}
 
+export const authenticate = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const result = await getSessionUser(
+      new Headers(req.headers as Record<string, string>),
+    );
+
+    if (!result.ok) {
+      if (result.reason === "USER_INACTIVE") {
+        return res.status(403).json({
+          message: "Usuário desativado",
+          code: "USER_INACTIVE",
+        });
+      }
+      return res.status(401).json({
+        message:
+          result.reason === "USER_NOT_FOUND"
+            ? "Usuário não encontrado"
+            : "Sessão inválida ou expirada. Faça login novamente.",
+      });
+    }
+
+    req.user = result.user;
     next();
   } catch (error) {
     console.error("❌ Erro na autenticação:", error);
