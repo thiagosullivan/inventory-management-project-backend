@@ -1,3 +1,4 @@
+// src/lib/auth.ts
 import "dotenv/config";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
@@ -94,23 +95,18 @@ export const auth = betterAuth({
       otpLength: 6,
       expiresIn: 5 * 60,
       async sendVerificationOTP({ email, otp, type }) {
-        // Busca o nome do user pra personalizar o e-mail.
-        // type aqui só vem como "email-verification" | "sign-in" | "forget-password"
         const user = await prisma.user.findUnique({
           where: { email },
           select: { name: true },
         });
 
         if (!user) {
-          // Não revela se o e-mail existe (evita enumeração)
           console.warn(
             `⚠️ OTP solicitado para e-mail não cadastrado: ${email}`,
           );
           return;
         }
 
-        // Mapeia o type do Better Auth pro nosso template.
-        // "sign-in" não usamos na 7.9, mas mapeamos pra verification por segurança.
         const templateType: "email-verification" | "forget-password" =
           type === "forget-password" ? "forget-password" : "email-verification";
 
@@ -121,12 +117,8 @@ export const auth = betterAuth({
           type: templateType,
         });
       },
-      // 🔹 changeEmail: o OTP vai pro NOVO e-mail (padrão do Better Auth).
-      //    O template change-email será plugado aqui no Lote 2.
       changeEmail: {
         enabled: true,
-        // verifyCurrentEmail: false (padrão) — não pede OTP do e-mail atual.
-        // O e-mail antigo continua válido até a confirmação.
       },
     }),
   ],
