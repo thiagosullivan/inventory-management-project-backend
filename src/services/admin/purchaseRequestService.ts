@@ -17,6 +17,8 @@ import {
   PurchaseRequestStatus as PrismaPurchaseRequestStatus,
   TransferStatus as PrismaTransferStatus,
 } from "../../generated/prisma/client.js";
+import { notificationService } from "./notificationService.js";
+import { NotificationType } from "../../generated/prisma/enums.js";
 
 // ============================================================
 // INCLUDE PADRÃO
@@ -216,6 +218,13 @@ export const purchaseRequestService = {
       include: requestInclude,
     });
 
+    await notificationService.createForAlmoxAndManagers({
+      type: NotificationType.REQUEST_CREATED,
+      title: "Novo pedido recebido",
+      message: `${request.sector.name} criou um pedido com ${request.items.length} item(ns).`,
+      link: `/requests`,
+    });
+
     return request;
   },
 
@@ -366,6 +375,13 @@ export const purchaseRequestService = {
       include: requestInclude,
     });
 
+    await notificationService.createForSector(updated.sectorId, {
+      type: NotificationType.REQUEST_REFUSED,
+      title: "Pedido recusado",
+      message: `Seu pedido foi recusado. Motivo: ${refusalReason}`,
+      link: `/requests`,
+    });
+
     return updated;
   },
 
@@ -464,6 +480,13 @@ export const purchaseRequestService = {
         finalizeNote,
       },
       include: requestInclude,
+    });
+
+    await notificationService.createForSector(updated.sectorId, {
+      type: NotificationType.REQUEST_FINALIZED,
+      title: "Pedido finalizado",
+      message: `Seu pedido foi atendido pelo Almoxarifado.`,
+      link: `/requests`,
     });
 
     return updated;
