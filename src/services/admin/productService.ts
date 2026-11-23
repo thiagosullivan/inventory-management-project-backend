@@ -21,6 +21,7 @@ import {
 } from "../../utils/validation";
 import { sectorService } from "./sectorService";
 import { utapi } from "../../utils/uploadthing";
+import { notificationService } from "./notificationService.js";
 
 /**
  * 🔹 Recalcula a média ponderada móvel após uma ENTRADA com preço > 0.
@@ -706,7 +707,14 @@ export const productService = {
         },
       });
       if (!existingAlert) {
-        await prisma.stockAlert.create({ data: alertData });
+        const created = await prisma.stockAlert.create({ data: alertData });
+        // 🔹 Fase 8 — notifica só quando o alerta é novo
+        await notificationService.createForAlmoxAndManagers({
+          type: "STOCK_ALERT",
+          title: "Novo alerta de estoque",
+          message: created.message,
+          link: `/products/${created.productId}`,
+        });
       }
     }
 
