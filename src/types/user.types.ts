@@ -104,3 +104,39 @@ export interface UpdateUserSectorData {
 export interface UpdateUserProfileData {
   name: string;
 }
+
+// ============================================================
+// 🔹 Fase 7.9 — rotas /api/me
+// ============================================================
+
+export interface UpdateMyProfileData {
+  name: string;
+}
+
+export interface UpdateMyPasswordData {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface UpdateMyAvatarData {
+  url: string;
+}
+
+export interface RequestEmailChangeData {
+  newEmail: string;
+}
+
+export interface ConfirmEmailChangeData {
+  newEmail: string;
+  otp: string;
+}
+
+export interface SessionResponse {
+  id: string;
+  userId: string;
+  expiresAt: Date;
+  createdAt: Date;
+  ipAddress: string | null;
+  userAgent: string | null;
+  isCurrent: boolean;
+}
