@@ -17,6 +17,8 @@ import {
   PurchaseRequestStatus,
   TransferStatus as PrismaTransferStatus,
 } from "../../generated/prisma/client.js";
+import { notificationService } from "./notificationService.js";
+import { NotificationType } from "../../generated/prisma/enums.js";
 
 // ============================================================
 // HELPERS DE PERMISSÃO
@@ -348,6 +350,13 @@ export const transferService = {
       }
     }
 
+    await notificationService.createForSector(transfer.toSectorId, {
+      type: NotificationType.TRANSFER_CREATED,
+      title: "Nova remessa recebida",
+      message: `Remessa de ${transfer.fromSector.name} com ${transfer.items.length} item(ns).`,
+      link: `/movements`,
+    });
+
     return transfer;
   },
 
@@ -547,6 +556,13 @@ export const transferService = {
       throw new Error("Erro ao confirmar remessa");
     }
 
+    await notificationService.createForSector(updated.fromSectorId, {
+      type: NotificationType.TRANSFER_CONFIRMED,
+      title: "Remessa confirmada",
+      message: `Remessa confirmada por ${updated.toSector.name}.`,
+      link: `/history`,
+    });
+
     return updated;
   },
 
@@ -669,6 +685,13 @@ export const transferService = {
         );
       }
     }
+
+    await notificationService.createForSector(updated.fromSectorId, {
+      type: NotificationType.TRANSFER_REFUSED,
+      title: "Remessa recusada",
+      message: `Remessa recusada por ${updated.toSector.name}.`,
+      link: `/history`,
+    });
 
     return updated;
   },
@@ -794,6 +817,13 @@ export const transferService = {
         );
       }
     }
+
+    await notificationService.createForSector(updated.toSectorId, {
+      type: NotificationType.TRANSFER_CANCELLED,
+      title: "Remessa cancelada",
+      message: `Remessa cancelada pelo Almoxarifado.`,
+      link: `/movements`,
+    });
 
     return updated;
   },
