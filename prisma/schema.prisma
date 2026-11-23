@@ -46,6 +46,17 @@ enum PurchaseRequestStatus {
   CANCELADO
 }
 
+enum NotificationType {
+  TRANSFER_CREATED
+  TRANSFER_CONFIRMED
+  TRANSFER_REFUSED
+  TRANSFER_CANCELLED
+  REQUEST_CREATED
+  REQUEST_FINALIZED
+  REQUEST_REFUSED
+  STOCK_ALERT
+}
+
 // ============================================================
 // AUTH (Better Auth) — User, Account, Session, Verification
 // ============================================================
@@ -87,6 +98,8 @@ model User {
   createdRequests   PurchaseRequest[] @relation("RequestCreatedBy")
   finalizedRequests PurchaseRequest[] @relation("RequestFinalizedBy")
   refusedRequests   PurchaseRequest[] @relation("RequestRefusedBy")
+
+  notifications Notification[]
 
   @@index([email])
   @@index([role])
@@ -426,4 +439,25 @@ model PurchaseRequestItem {
 
   @@index([requestId])
   @@index([productId])
+}
+
+// ============================================================
+// NOTIFICAÇÃO (Fase 8)
+// ============================================================
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  link      String?
+  isRead    Boolean          @default(false)
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+  @@index([userId, createdAt])
 }
