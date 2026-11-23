@@ -74,6 +74,7 @@ export interface AuthenticatedUser {
   email: string;
   name: string;
   role: Role;
+  image?: string | null;
   emailVerified: boolean;
   isActive: boolean;
   sectorId: string;
