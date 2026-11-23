@@ -133,6 +133,29 @@ export const meService = {
     });
   },
 
+  async listMySessions(
+    userId: string,
+    currentSessionId: string,
+  ): Promise<SessionResponse[]> {
+    const sessions = await prisma.session.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        userId: true,
+        expiresAt: true,
+        createdAt: true,
+        ipAddress: true,
+        userAgent: true,
+      },
+    });
+
+    return sessions.map((s) => ({
+      ...s,
+      isCurrent: s.id === currentSessionId,
+    }));
+  },
+
   async revokeMySession(
     userId: string,
     sessionId: string,
