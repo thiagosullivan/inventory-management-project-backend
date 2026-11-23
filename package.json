@@ -28,6 +28,7 @@
     "express": "^5.2.1",
     "nodemailer": "^10.6.1",
     "pg": "^8.13.3",
+    "socket.io": "^4.8.4",
     "uploadthing": "^7.7.4"
   },
   "devDependencies": {
