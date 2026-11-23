@@ -2,6 +2,7 @@
 import express from "express";
 import { authenticate } from "../../middlewares/auth.js";
 import { meController } from "../../controllers/admin/meController.js";
+import { notificationController } from "../../controllers/admin/notificationController.js";
 
 const meRouter = express.Router();
 
@@ -30,5 +31,11 @@ meRouter.delete("/sessions/:id", meController.revokeMySession);
 // 🔹 Fase 7.9 — Troca de e-mail
 meRouter.post("/email/request-change", meController.requestEmailChange);
 meRouter.post("/email/confirm-change", meController.confirmEmailChange);
+
+// 🔹 Fase 8 — Notificações
+meRouter.get("/notifications", notificationController.list);
+meRouter.get("/notifications/unread-count", notificationController.unreadCount);
+meRouter.patch("/notifications/read-all", notificationController.markAllRead);
+meRouter.patch("/notifications/:id/read", notificationController.markRead);
 
 export default meRouter;
