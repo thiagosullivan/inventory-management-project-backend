@@ -7,8 +7,12 @@ export function changeEmailTemplate(opts: {
   newEmail: string;
 }): { subject: string; html: string } {
   const { userName, otp, newEmail } = opts;
+  const greeting = userName ? `Olá, <strong>${userName}</strong>.` : "Olá!";
 
   const body = `
+    <p style="margin:0 0 16px 0;font-size:14px;color:#3f3f46;line-height:1.6;">
+      ${greeting}
+    </p>
     <p style="margin:0 0 16px 0;font-size:14px;color:#3f3f46;line-height:1.6;">
       Você solicitou a alteração do seu e-mail no Stockify para
       <strong>${newEmail}</strong>.
@@ -18,7 +22,7 @@ export function changeEmailTemplate(opts: {
     </p>
 
     <div style="text-align:center;margin:24px 0;">
-      <span style="display:inline-block;font-size:32px;font-weight:700;letter-spacing:8px;color:#18181b;background-color:#f4f4f5;padding:16px 28px;border-radius:8px;border:1px solid #e4e4e7;font-family:monospace;">
+      <span style="display:inline-block;font-size:32px;font-weight:700;letter-spacing:8px;color:#006ec4;background-color:#f4f4f5;padding:16px 28px;border-radius:8px;border:1px solid #e4e4e7;font-family:monospace;">
         ${otp}
       </span>
     </div>

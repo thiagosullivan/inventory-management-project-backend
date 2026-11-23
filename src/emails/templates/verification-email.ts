@@ -13,7 +13,7 @@ export function verificationEmailTemplate(opts: {
     </p>
 
     <div style="text-align:center;margin:24px 0;">
-      <span style="display:inline-block;font-size:32px;font-weight:700;letter-spacing:8px;color:#18181b;background-color:#f4f4f5;padding:16px 28px;border-radius:8px;border:1px solid #e4e4e7;font-family:monospace;">
+      <span style="display:inline-block;font-size:32px;font-weight:700;letter-spacing:8px;color:#006ec4;background-color:#f4f4f5;padding:16px 28px;border-radius:8px;border:1px solid #e4e4e7;font-family:monospace;">
         ${otp}
       </span>
     </div>

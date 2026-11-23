@@ -37,7 +37,7 @@ export function baseLayout({
           <!-- Body -->
           <tr>
             <td style="padding:28px 24px 8px 24px;">
-              <p style="margin:0 0 12px 0;font-size:15px;color:#18181b;">
+              <p style="margin:0 0 12px 0;font-size:15px;color:#006ec4;">
                 Olá, <strong>${userName}</strong>.
               </p>
               ${bodyHtml}
