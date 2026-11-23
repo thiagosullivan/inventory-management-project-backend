@@ -14,7 +14,6 @@ let cachedAlmoxarifadoId: string | null = null;
 
 /**
  * 🔹 Garante que só existe 1 setor com isWarehouse: true no sistema.
- * Usado no create (antes de criar) e no update (se tentar mudar isWarehouse).
  */
 async function countWarehouses(excludeId?: string): Promise<number> {
   return prisma.sector.count({
@@ -26,11 +25,25 @@ async function countWarehouses(excludeId?: string): Promise<number> {
 }
 
 /**
+ * 🔹 _count padrão usado em todas as respostas de setor.
+ *    Fase 7.7 — movementsFrom/To adicionados (bloqueiam delete).
+ */
+const SECTOR_COUNT_SELECT = {
+  users: true,
+  transfersFrom: true,
+  transfersTo: true,
+  purchaseRequests: true,
+  movementsFrom: true,
+  movementsTo: true,
+} as const;
+
+/**
  * 🔹 Checa se o setor pode ser deletado:
  * - Não pode ser o Almoxarifado (isWarehouse: true)
  * - Não pode ter usuários vinculados
  * - Não pode ter Transfer (from/to) vinculada
  * - Não pode ter PurchaseRequest vinculada
+ * - Não pode ter Movement (from/to) vinculada
  */
 async function ensureCanDeleteSector(sectorId: string): Promise<void> {
   const sector = await prisma.sector.findUnique({
@@ -39,14 +52,7 @@ async function ensureCanDeleteSector(sectorId: string): Promise<void> {
       id: true,
       name: true,
       isWarehouse: true,
-      _count: {
-        select: {
-          users: true,
-          transfersFrom: true,
-          transfersTo: true,
-          purchaseRequests: true,
-        },
-      },
+      _count: { select: SECTOR_COUNT_SELECT },
     },
   });
 
@@ -77,6 +83,13 @@ async function ensureCanDeleteSector(sectorId: string): Promise<void> {
       `Setor "${sector.name}" possui pedidos vinculados. Não pode ser deletado.`,
     );
   }
+
+  // 🔹 Fase 7.7 — movimentações (from/to) também bloqueiam
+  if (sector._count.movementsFrom > 0 || sector._count.movementsTo > 0) {
+    throw new Error(
+      `Setor "${sector.name}" possui movimentações vinculadas. Não pode ser deletado.`,
+    );
+  }
 }
 
 export const sectorService = {
@@ -86,7 +99,6 @@ export const sectorService = {
    * - Valida isWarehouse: só pode existir 1 true
    */
   async createSector(data: CreateSectorData): Promise<SectorResponse> {
-    // 1. Normalizar nome
     const normalizedName = normalizeText(data.name);
     if (!normalizedName || normalizedName.length < 2) {
       throw new Error("Dados inválidos: nome deve ter pelo menos 2 caracteres");
@@ -95,7 +107,6 @@ export const sectorService = {
       throw new Error("Dados inválidos: nome deve ter no máximo 50 caracteres");
     }
 
-    // 2. Checar duplicata (case-insensitive)
     const existing = await prisma.sector.findFirst({
       where: {
         name: { equals: normalizedName, mode: "insensitive" },
@@ -106,7 +117,6 @@ export const sectorService = {
       throw new Error(`Setor "${normalizedName}" já existe`);
     }
 
-    // 3. Validar isWarehouse único
     if (data.isWarehouse) {
       const warehouseCount = await countWarehouses();
       if (warehouseCount > 0) {
@@ -116,7 +126,6 @@ export const sectorService = {
       }
     }
 
-    // 4. Criar
     const sector = await prisma.sector.create({
       data: {
         name: normalizedName,
@@ -125,14 +134,7 @@ export const sectorService = {
         isActive: data.isActive ?? true,
       },
       include: {
-        _count: {
-          select: {
-            users: true,
-            transfersFrom: true,
-            transfersTo: true,
-            purchaseRequests: true,
-          },
-        },
+        _count: { select: SECTOR_COUNT_SELECT },
       },
     });
 
@@ -164,16 +166,9 @@ export const sectorService = {
     const sectors = await prisma.sector.findMany({
       where,
       include: {
-        _count: {
-          select: {
-            users: true,
-            transfersFrom: true,
-            transfersTo: true,
-            purchaseRequests: true,
-          },
-        },
+        _count: { select: SECTOR_COUNT_SELECT },
       },
-      orderBy: [{ isWarehouse: "desc" }, { name: "asc" }], // Almoxarifado primeiro
+      orderBy: [{ isWarehouse: "desc" }, { name: "asc" }],
     });
 
     return {
@@ -189,14 +184,7 @@ export const sectorService = {
     return prisma.sector.findUnique({
       where: { id: sectorId },
       include: {
-        _count: {
-          select: {
-            users: true,
-            transfersFrom: true,
-            transfersTo: true,
-            purchaseRequests: true,
-          },
-        },
+        _count: { select: SECTOR_COUNT_SELECT },
       },
     });
   },
@@ -205,12 +193,12 @@ export const sectorService = {
    * Atualizar setor (only MANAGER)
    * - isWarehouse é IMUTÁVEL (não pode ser alterado)
    * - Nome pode ser alterado (valida duplicata)
+   * - 🔹 Fase 7.8 — Almoxarifado (isWarehouse: true) NÃO pode ser inativado
    */
   async updateSector(
     sectorId: string,
     data: UpdateSectorData,
   ): Promise<SectorResponse> {
-    // 1. Buscar setor existente
     const existing = await prisma.sector.findUnique({
       where: { id: sectorId },
       select: { id: true, name: true, isWarehouse: true },
@@ -219,7 +207,6 @@ export const sectorService = {
       throw new Error("Setor não encontrado");
     }
 
-    // 2. Normalizar nome (se veio)
     const updateData: any = {};
 
     if (data.name !== undefined) {
@@ -235,7 +222,6 @@ export const sectorService = {
         );
       }
 
-      // Checar duplicata (case-insensitive, excluindo o próprio)
       const duplicate = await prisma.sector.findFirst({
         where: {
           name: { equals: normalizedName, mode: "insensitive" },
@@ -257,22 +243,22 @@ export const sectorService = {
     }
 
     if (data.isActive !== undefined) {
+      // 🔹 Fase 7.8 — Almoxarifado (ponto 0) não pode ser inativado.
+      //    Inativar quebra fluxos de pedido/remessa (getAlmoxarifadoId acha,
+      //    mas operações que dependem do setor ativo falham).
+      if (data.isActive === false && existing.isWarehouse) {
+        throw new Error(
+          `O setor "${existing.name}" é o Almoxarifado (ponto 0) e não pode ser inativado`,
+        );
+      }
       updateData.isActive = data.isActive;
     }
 
-    // 3. Atualizar
     const sector = await prisma.sector.update({
       where: { id: sectorId },
       data: updateData,
       include: {
-        _count: {
-          select: {
-            users: true,
-            transfersFrom: true,
-            transfersTo: true,
-            purchaseRequests: true,
-          },
-        },
+        _count: { select: SECTOR_COUNT_SELECT },
       },
     });
 
@@ -282,7 +268,7 @@ export const sectorService = {
   /**
    * Deletar setor (only MANAGER)
    * - Bloqueia se isWarehouse: true
-   * - Bloqueia se tiver users/transfers/purchaseRequests vinculados
+   * - Bloqueia se tiver users/transfers/purchaseRequests/movements vinculados
    */
   async deleteSector(sectorId: string): Promise<void> {
     await ensureCanDeleteSector(sectorId);
@@ -295,16 +281,20 @@ export const sectorService = {
   /**
    * Listar setores para dropdowns (STAFF + MANAGER)
    * GET /admin/sectors/options
-   * Shape: { label, value, isWarehouse }[]
+   * Shape: { label, value, isWarehouse, isActive }[]
+   *
+   * 🔹 Fase 7.7 — NÃO filtra isActive (o front decide onde desabilitar).
+   *    Setores inativos precisam aparecer em filtros históricos e como
+   *    item desabilitado em selects de criação/edição.
    */
   async getSectorOptions(): Promise<SectorOption[]> {
     const sectors = await prisma.sector.findMany({
-      where: { isActive: true }, // só ativos no dropdown
       orderBy: [{ isWarehouse: "desc" }, { name: "asc" }],
       select: {
         id: true,
         name: true,
         isWarehouse: true,
+        isActive: true,
       },
     });
 
@@ -312,14 +302,13 @@ export const sectorService = {
       label: s.name,
       value: s.id,
       isWarehouse: s.isWarehouse,
+      isActive: s.isActive,
     }));
   },
 
   /**
-   * 🔹 NOVO — Fase 6
    * Retorna o ID do Almoxarifado (setor com isWarehouse: true).
    * Como isWarehouse é imutável, o valor é cacheado em memória.
-   * Se não existir Almoxarifado, lança erro (configuração inválida).
    */
   async getAlmoxarifadoId(): Promise<string> {
     if (cachedAlmoxarifadoId) {

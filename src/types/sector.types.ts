@@ -30,6 +30,9 @@ export interface SectorResponse {
     transfersFrom: number;
     transfersTo: number;
     purchaseRequests: number;
+    // 🔹 Fase 7.7 — movimentações também bloqueiam delete
+    movementsFrom: number;
+    movementsTo: number;
   };
 }
 
@@ -47,8 +50,10 @@ export interface SectorFilters {
 }
 
 // 🔹 Tipo do /options
+//    Fase 7.7 — isActive no shape; o front decide onde desabilitar
 export interface SectorOption {
   label: string;
   value: string;
   isWarehouse: boolean;
+  isActive: boolean;
 }

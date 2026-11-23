@@ -159,6 +159,7 @@ export const sectorController = {
    * Update sector (only MANAGER)
    * PATCH /api/admin/sectors/:id
    * 🔹 isWarehouse é imutável — rejeita se vier no payload (Opção A)
+   * 🔹 Fase 7.8 — Almoxarifado (isWarehouse: true) não pode ser inativado
    */
   async updateSector(req: Request, res: Response) {
     try {
@@ -182,7 +183,6 @@ export const sectorController = {
         });
       }
 
-      // 🔹 Opção A — isWarehouse é imutável (rejeitar no controller)
       const { isWarehouse, ...rest } = req.body;
       if (isWarehouse !== undefined) {
         return res.status(400).json({
@@ -216,6 +216,15 @@ export const sectorController = {
       });
     } catch (error: any) {
       console.error("❌ Erro ao atualizar setor:", error);
+
+      // 🔹 Fase 7.8 — Almoxarifado não pode ser inativado
+      if (error.message.includes("não pode ser inativado")) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+          code: "CANNOT_DEACTIVATE_WAREHOUSE",
+        });
+      }
 
       if (error.message.includes("Setor não encontrado")) {
         return res.status(404).json({
@@ -302,7 +311,16 @@ export const sectorController = {
         });
       }
 
-      if (error.message.includes("vinculado")) {
+      // 🔹 Fase 7.7 — mensagens do guard de dependências:
+      //    - "vinculado(s)" (users)
+      //    - "remessas vinculadas" (transfers)
+      //    - "pedidos vinculados" (purchaseRequests)
+      //    - "movimentações vinculadas" (movementsFrom/To)
+      //    Todas caem em SECTOR_HAS_RELATIONS (409).
+      if (
+        error.message.includes("vinculado") ||
+        error.message.includes("movimentações")
+      ) {
         return res.status(409).json({
           success: false,
           message: error.message,

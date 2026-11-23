@@ -7,7 +7,7 @@ export interface CreateStaffUserData {
   password: string;
   role?: Role;
   image?: string;
-  sectorId: string; // 🔹 NOVO — obrigatório na Fase 6
+  sectorId: string;
 }
 
 export interface BetterAuthUser {
@@ -20,7 +20,7 @@ export interface BetterAuthUser {
   updatedAt: Date;
   role: Role;
   isActive: boolean;
-  sectorId: string; // 🔹 NOVO
+  sectorId: string;
 }
 
 export interface BetterAuthUserResponse {
@@ -39,12 +39,12 @@ export interface UserResponse {
   lastLogin: Date | null;
   image: string | null;
   emailVerified: boolean;
-  sectorId: string; // 🔹 NOVO
+  sectorId: string;
   sector?: {
     id: string;
     name: string;
     isWarehouse: boolean;
-  }; // 🔹 NOVO — opcional
+  };
 }
 
 export interface UsersListResponse {
@@ -58,7 +58,7 @@ export interface UserFilters {
   search?: string;
   role?: Role;
   isActive?: boolean;
-  sectorId?: string; // 🔹 NOVO
+  sectorId?: string;
   page?: number;
   limit?: number;
 }
@@ -95,7 +95,12 @@ export interface UserOption {
   isActive: boolean;
 }
 
-// 🔹 NOVO — payload do PATCH /users/:id/sector
+// 🔹 Fase 6 — payload do PATCH /users/:id/sector
 export interface UpdateUserSectorData {
   sectorId: string;
+}
+
+// 🔹 Fase 7.6 — payload do PATCH /users/:id/profile
+export interface UpdateUserProfileData {
+  name: string;
 }

@@ -1,31 +1,27 @@
 // src/utils/validation.ts
-
 import { Role } from "../generated/prisma/enums";
 
+// ============================================================
 // USERS VALIDATIONS
+// ============================================================
 
-// Validar se o usuário é MANAGER
 export function isManager(role: Role): boolean {
   return role === Role.MANAGER;
 }
 
-// Validar se o usuário é STAFF
 export function isStaff(role: Role): boolean {
   return role === Role.STAFF || role === Role.MANAGER;
 }
 
-// Validar email
 export function isValidEmail(email: string): boolean {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);
 }
 
-// Validar senha (mínimo 6 caracteres)
 export function isValidPassword(password: string): boolean {
   return password.length >= 6;
 }
 
-// Validar dados do usuário
 export function validateUserData(data: {
   email: string;
   name: string;
@@ -56,9 +52,25 @@ export function validateUserData(data: {
   };
 }
 
-// CATEGORIES VALIDATIONS
+// 🔹 Fase 7.6 — validação isolada do nome (usada no PATCH /:id/profile)
+export function validateUserName(name: string | undefined | null): {
+  isValid: boolean;
+  errors: string[];
+} {
+  const errors: string[] = [];
+  if (!name || name.trim().length < 2) {
+    errors.push("Nome deve ter pelo menos 2 caracteres");
+  }
+  if (name && name.length > 200) {
+    errors.push("Nome deve ter no máximo 200 caracteres");
+  }
+  return { isValid: errors.length === 0, errors };
+}
 
-// Validar dados da categoria
+// ============================================================
+// CATEGORIES VALIDATIONS (mantém igual)
+// ============================================================
+
 export function validateCategoryData(data: {
   name: string;
   description?: string;
@@ -83,7 +95,6 @@ export function validateCategoryData(data: {
   };
 }
 
-// Validar se a categoria existe
 export async function categoryExists(
   prisma: any,
   id: string,
@@ -95,7 +106,6 @@ export async function categoryExists(
   return !!category;
 }
 
-// Validar se o nome da categoria já existe
 export async function categoryNameExists(
   prisma: any,
   name: string,
@@ -119,7 +129,6 @@ export async function categoryNameExists(
   return !!category;
 }
 
-// Validar dados do produto
 export function validateProductData(data: {
   name: string;
   sku?: string;
@@ -170,7 +179,6 @@ export function validateProductData(data: {
   };
 }
 
-// Validar dados de movimentação
 export function validateMovementData(data: {
   productId: string;
   type: string;
@@ -196,7 +204,6 @@ export function validateMovementData(data: {
   };
 }
 
-// Verificar se SKU já existe
 export async function skuExists(
   prisma: any,
   sku: string,
@@ -213,9 +220,6 @@ export async function skuExists(
   return !!product;
 }
 
-/**
- * Normaliza texto de entrada (nome de categoria/produto).
- */
 export function normalizeText(input: string): string {
   return input.trim().replace(/\s+/g, " ");
 }
