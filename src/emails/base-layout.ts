@@ -27,7 +27,7 @@ export function baseLayout({
         <table role="presentation" width="480" cellspacing="0" cellpadding="0" style="background-color:#ffffff;border-radius:8px;overflow:hidden;border:1px solid #e4e4e7;">
           <!-- Header -->
           <tr>
-            <td style="background-color:#18181b;padding:20px 24px;">
+            <td style="background-color:#006ec4;padding:20px 24px;">
               <h1 style="margin:0;font-size:18px;font-weight:700;color:#ffffff;letter-spacing:0.5px;">
                 Stockify
               </h1>
