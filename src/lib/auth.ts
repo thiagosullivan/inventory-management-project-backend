@@ -3,20 +3,19 @@ import "dotenv/config";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { emailOTP } from "better-auth/plugins";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "../generated/prisma/client";
 import { sendOtpEmail } from "../emails/send-email.js";
+import { prisma } from "./prisma.js";
 
-const connectionString = `${process.env.DATABASE_URL}`;
-const adapter = new PrismaPg({ connectionString });
+// const connectionString = `${process.env.DATABASE_URL}`;
+// const adapter = new PrismaPg({ connectionString });
 
-const prisma = new PrismaClient({
-  adapter,
-  log:
-    process.env.NODE_ENV === "development"
-      ? ["query", "error", "warn"]
-      : ["error"],
-});
+// const prisma = new PrismaClient({
+//   adapter,
+//   log:
+//     process.env.NODE_ENV === "development"
+//       ? ["query", "error", "warn"]
+//       : ["error"],
+// });
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
@@ -71,6 +70,8 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     autoSignIn: true,
+    minPasswordLength: 8,
+    maxPasswordLength: 128,
   },
 
   session: {
@@ -90,7 +91,6 @@ export const auth = betterAuth({
   },
 
   plugins: [
-    // 🔹 Fase 7.9 — OTP por e-mail (6 dígitos, 5 min)
     emailOTP({
       otpLength: 6,
       expiresIn: 5 * 60,
@@ -107,7 +107,7 @@ export const auth = betterAuth({
               userName: "usuário",
               otp,
               type: "change-email",
-              newEmail: email, // 🔹 o OTP vai para o novo e-mail
+              newEmail: email,
             });
             return;
           }
