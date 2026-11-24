@@ -354,7 +354,7 @@ export const transferService = {
       type: NotificationType.TRANSFER_CREATED,
       title: "Nova remessa recebida",
       message: `Remessa de ${transfer.fromSector.name} com ${transfer.items.length} item(ns).`,
-      link: `/movements`,
+      link: `/movimentacoes`,
     });
 
     return transfer;
@@ -822,7 +822,7 @@ export const transferService = {
       type: NotificationType.TRANSFER_CANCELLED,
       title: "Remessa cancelada",
       message: `Remessa cancelada pelo Almoxarifado.`,
-      link: `/movements`,
+      link: `/movimentacoes`,
     });
 
     return updated;
