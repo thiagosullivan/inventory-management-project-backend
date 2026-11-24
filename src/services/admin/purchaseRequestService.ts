@@ -222,7 +222,7 @@ export const purchaseRequestService = {
       type: NotificationType.REQUEST_CREATED,
       title: "Novo pedido recebido",
       message: `${request.sector.name} criou um pedido com ${request.items.length} item(ns).`,
-      link: `/requests`,
+      link: `/pedidos`,
     });
 
     return request;
@@ -379,7 +379,7 @@ export const purchaseRequestService = {
       type: NotificationType.REQUEST_REFUSED,
       title: "Pedido recusado",
       message: `Seu pedido foi recusado. Motivo: ${refusalReason}`,
-      link: `/requests`,
+      link: `/pedidos`,
     });
 
     return updated;
@@ -486,7 +486,7 @@ export const purchaseRequestService = {
       type: NotificationType.REQUEST_FINALIZED,
       title: "Pedido finalizado",
       message: `Seu pedido foi atendido pelo Almoxarifado.`,
-      link: `/requests`,
+      link: `/pedidos`,
     });
 
     return updated;

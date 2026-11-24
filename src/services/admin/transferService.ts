@@ -560,7 +560,7 @@ export const transferService = {
       type: NotificationType.TRANSFER_CONFIRMED,
       title: "Remessa confirmada",
       message: `Remessa confirmada por ${updated.toSector.name}.`,
-      link: `/history`,
+      link: `/historico`,
     });
 
     return updated;
@@ -690,7 +690,7 @@ export const transferService = {
       type: NotificationType.TRANSFER_REFUSED,
       title: "Remessa recusada",
       message: `Remessa recusada por ${updated.toSector.name}.`,
-      link: `/history`,
+      link: `/historico`,
     });
 
     return updated;
