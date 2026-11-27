@@ -1,6 +1,7 @@
 // src/server.ts
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import "dotenv/config";
 import http from "node:http";
 import { Server } from "socket.io";
@@ -13,10 +14,35 @@ import { setIo } from "./lib/socket.js";
 const app = express();
 const port = process.env.PORT || 3000;
 
+// 🔹 Lista de origens permitidas (CSV no .env)
+const allowedOrigins = (process.env.CORS_ORIGINS ?? "http://localhost:5173")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+// 🔹 Valida origem exata ou wildcard de subdomínio (ex.: https://*.stockifyapp.com.br)
+function isOriginAllowed(origin: string | undefined): boolean {
+  if (!origin) return false;
+  return allowedOrigins.some((allowed) => {
+    if (allowed === origin) return true;
+    if (allowed.includes("*")) {
+      const escaped = allowed
+        .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+        .replace(/\*/g, "[^.]+");
+      return new RegExp(`^${escaped}$`).test(origin);
+    }
+    return false;
+  });
+}
+
 // Middlewares
+app.use(helmet());
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: (origin, callback) => {
+      if (isOriginAllowed(origin)) return callback(null, true);
+      return callback(new Error("Not allowed by CORS"));
+    },
     credentials: true,
     allowedHeaders: [
       "Authorization",
@@ -30,8 +56,8 @@ app.use(
     optionsSuccessStatus: 200,
   }),
 );
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
 // Routes
 app.use("/api", apiRouter);
@@ -42,7 +68,10 @@ const httpServer = http.createServer(app);
 
 const io = new Server(httpServer, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: (origin, callback) => {
+      if (isOriginAllowed(origin)) return callback(null, true);
+      return callback(new Error("Not allowed by CORS"));
+    },
     credentials: true,
   },
   path: "/socket.io",
@@ -83,15 +112,21 @@ setIo(io);
 httpServer.listen(port, () => {
   console.log(`🚀 Servidor rodando em http://localhost:${port}`);
   console.log(`📊 Banco de dados: NeonDB`);
-  console.log(
-    `🔗 Conexão: ${process.env.DATABASE_URL?.split("@")[1]?.split("/")[0] || "Não configurado"}`,
-  );
   console.log(`🔌 Socket.io montado em /socket.io`);
+  console.log(`🌐 Origens CORS permitidas: ${allowedOrigins.join(", ")}`);
 });
 
-// Graceful shutdown
-process.on("SIGINT", async () => {
-  await prisma.$disconnect();
-  console.log("👋 Desconectado do NeonDB");
+// Graceful shutdown (SIGINT local + SIGTERM Render)
+async function shutdown(signal: string) {
+  console.log(`\n${signal} recebido. Encerrando...`);
+  try {
+    await prisma.$disconnect();
+    console.log("👋 Desconectado do NeonDB");
+  } catch (err) {
+    console.error("Erro ao desconectar do Prisma:", err);
+  }
   process.exit(0);
-});
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
