@@ -6,7 +6,8 @@ import { emailOTP } from "better-auth/plugins";
 import { sendOtpEmail } from "../emails/send-email.js";
 import { prisma } from "./prisma.js";
 
-// 🔹 Origens confiáveis (CSRF) — mesma lista do CORS_ORIGINS do server.ts
+const isProduction = process.env.NODE_ENV === "production";
+
 const trustedOrigins = (process.env.CORS_ORIGINS ?? "http://localhost:5173")
   .split(",")
   .map((o) => o.trim())
@@ -35,10 +36,6 @@ export const auth = betterAuth({
       },
     },
   },
-
-  // 🔴 Bloco `cors` removido — CORS é responsabilidade do Express (server.ts).
-  //    Better Auth usa `trustedOrigins` para validação de origem/CSRF.
-
   trustedOrigins,
 
   csrf: {
@@ -72,7 +69,7 @@ export const auth = betterAuth({
     emailOTP({
       otpLength: 6,
       expiresIn: 5 * 60,
-      allowedAttempts: 3, // 🔹 após 3 tentativas falhas, invalida o OTP
+      allowedAttempts: 3,
       async sendVerificationOTP({ email, otp, type }) {
         const user = await prisma.user.findUnique({
           where: { email },
@@ -109,4 +106,11 @@ export const auth = betterAuth({
       },
     }),
   ],
+
+  advanced: {
+    defaultCookieAttributes: {
+      sameSite: isProduction ? "none" : "lax",
+      secure: isProduction,
+    },
+  },
 });

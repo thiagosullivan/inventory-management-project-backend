@@ -22,14 +22,16 @@ const allowedOrigins = (process.env.CORS_ORIGINS ?? "http://localhost:5173")
 
 // 🔹 Valida origem exata ou wildcard de subdomínio (ex.: https://*.stockifyapp.com.br)
 function isOriginAllowed(origin: string | undefined): boolean {
-  if (!origin) return false;
+  if (!origin) return true;
+
+  const cleanOrigin = origin.replace(/\/$/, "");
   return allowedOrigins.some((allowed) => {
-    if (allowed === origin) return true;
+    if (allowed === cleanOrigin) return true;
     if (allowed.includes("*")) {
       const escaped = allowed
         .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
         .replace(/\*/g, "[^.]+");
-      return new RegExp(`^${escaped}$`).test(origin);
+      return new RegExp(`^${escaped}$`).test(cleanOrigin);
     }
     return false;
   });
